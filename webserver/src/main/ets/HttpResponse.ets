@@ -302,6 +302,81 @@ export class HttpResponse {
   }
 
   /**
+   * 发送XML响应
+   * @param xmlString XML字符串
+   */
+  public async xml(xmlString: string): Promise<void> {
+    this.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    await this.send(xmlString);
+  }
+
+  /**
+   * 发送207 Multi-Status响应（WebDAV）
+   * @param data 多状态数据
+   */
+  public async multiStatus(data: ESObject): Promise<void> {
+    this.status(207);
+    this.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    
+    // 如果传入的是对象，转换为WebDAV XML格式
+    const xmlString = this.convertToWebDAVXml(data);
+    await this.send(xmlString);
+  }
+
+  /**
+   * 发送207 Multi-Status响应（JSON格式）
+   * @param data 多状态数据
+   */
+  public async multiJson(data: ESObject): Promise<void> {
+    this.status(207);
+    this.setHeader('Content-Type', 'application/json; charset=utf-8');
+    const jsonString = JSON.stringify(data);
+    await this.send(jsonString);
+  }
+
+  /**
+   * 转换为WebDAV XML格式
+   * @param data 数据对象
+   * @returns XML字符串
+   */
+  private convertToWebDAVXml(data: ESObject): string {
+    let xml = '<?xml version="1.0" encoding="utf-8"?>\n';
+    xml += '<D:multistatus xmlns:D="DAV:">\n';
+    
+    // 处理响应数据
+    if (data.responses && Array.isArray(data.responses)) {
+      for (const response of data.responses) {
+        xml += '  <D:response>\n';
+        xml += `    <D:href>${response.href || '/'}</D:href>\n`;
+        
+        if (response.propstat) {
+          xml += '    <D:propstat>\n';
+          xml += '      <D:prop>\n';
+          
+          if (response.propstat.prop) {
+            for (const [key, value] of Object.entries(response.propstat.prop)) {
+              xml += `        <D:${key}>${value}</D:${key}>\n`;
+            }
+          }
+          
+          xml += '      </D:prop>\n';
+          xml += `      <D:status>HTTP/1.1 ${response.propstat.status || '200 OK'}</D:status>\n`;
+          xml += '    </D:propstat>\n';
+        }
+        
+        if (response.status) {
+          xml += `    <D:status>HTTP/1.1 ${response.status}</D:status>\n`;
+        }
+        
+        xml += '  </D:response>\n';
+      }
+    }
+    
+    xml += '</D:multistatus>';
+    return xml;
+  }
+
+  /**
    * 发送到Socket
    * @param data 要发送的数据
    */

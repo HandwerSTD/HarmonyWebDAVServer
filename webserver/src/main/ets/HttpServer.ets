@@ -127,6 +127,87 @@ export class HttpServer {
   }
 
   /**
+   * 注册PROPFIND路由（WebDAV）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public propfind(path: string, handler: RequestHandler) {
+    this.router.addRoute('PROPFIND', path, handler);
+  }
+
+  /**
+   * 注册OPTIONS路由
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public options(path: string, handler: RequestHandler) {
+    this.router.addRoute('OPTIONS', path, handler);
+  }
+
+  /**
+   * 注册HEAD路由
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public head(path: string, handler: RequestHandler) {
+    this.router.addRoute('HEAD', path, handler);
+  }
+
+  /**
+   * 注册PATCH路由
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public patch(path: string, handler: RequestHandler) {
+    this.router.addRoute('PATCH', path, handler);
+  }
+
+  /**
+   * 注册COPY路由（WebDAV）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public copy(path: string, handler: RequestHandler) {
+    this.router.addRoute('COPY', path, handler);
+  }
+
+  /**
+   * 注册MOVE路由（WebDAV）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public move(path: string, handler: RequestHandler) {
+    this.router.addRoute('MOVE', path, handler);
+  }
+
+  /**
+   * 注册MKCOL路由（WebDAV - 创建集合/目录）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public mkcol(path: string, handler: RequestHandler) {
+    this.router.addRoute('MKCOL', path, handler);
+  }
+
+  /**
+   * 注册LOCK路由（WebDAV）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public lock(path: string, handler: RequestHandler) {
+    this.router.addRoute('LOCK', path, handler);
+  }
+
+  /**
+   * 注册UNLOCK路由（WebDAV）
+   * @param path 路由路径
+   * @param handler 处理函数
+   */
+  public unlock(path: string, handler: RequestHandler) {
+    this.router.addRoute('UNLOCK', path, handler);
+  }
+
+  /**
    * 启用自动请求体解析中间件
    */
   public auto() {
