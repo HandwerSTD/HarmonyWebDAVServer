@@ -6,6 +6,7 @@
  */
 import { Utils } from "./Utils";
 import { socket } from '@kit.NetworkKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { UploadedFile } from "./middleware/fileUpload";
 
 /**
@@ -23,8 +24,24 @@ export interface File {
 
 
 /**
+ * 数据回调函数类型
+ */
+export type DataCallback = (chunk: ArrayBuffer) => void;
+
+/**
+ * 结束回调函数类型
+ */
+export type EndCallback = () => void;
+
+/**
+ * 错误回调函数类型
+ */
+export type ErrorCallback = (error: BusinessError) => void;
+
+/**
  * HTTP请求类
  * 用于解析和处理HTTP请求数据
+ * 支持流式Body消费
  */
 export class HttpRequest {
   public method: string = ''; // HTTP请求方法（GET、POST等）
@@ -38,6 +55,13 @@ export class HttpRequest {
   public params: Record<string, string> = {}; // 路由参数
   public files: Record<string, File | UploadedFile> = {}; // 上传的文件（支持两种类型）
   private rawBody: ArrayBuffer = new ArrayBuffer(0); // 原始请求体数据
+  
+  // 流式传输相关属性
+  private _streamingEnabled: boolean = false; // 是否启用流式模式
+  private dataCallbacks: DataCallback[] = []; // 数据回调列表
+  private endCallbacks: EndCallback[] = []; // 结束回调列表
+  private errorCallbacks: ErrorCallback[] = []; // 错误回调列表
+  private receivedBytes: number = 0; // 已接收的字节数
 
   /**
    * 构造函数
@@ -377,5 +401,133 @@ export class HttpRequest {
     if (xRealIp) {
       this.ip = xRealIp;
     }
+  }
+
+  // ==================== 流式传输方法 ====================
+
+  /**
+   * 启用流式模式
+   * 调用此方法后，框架将不会自动解析Body，而是通过回调分发数据
+   * @returns 当前请求对象（支持链式调用）
+   */
+  public enableStreaming(): HttpRequest {
+    this._streamingEnabled = true;
+    return this;
+  }
+
+  /**
+   * 检查是否启用了流式模式
+   * @returns 是否启用流式模式
+   */
+  public isStreamingEnabled(): boolean {
+    return this._streamingEnabled;
+  }
+
+  /**
+   * 注册数据回调
+   * 当收到Body数据块时触发
+   * @param callback 数据回调函数
+   */
+  public onData(callback: DataCallback): void {
+    this.dataCallbacks.push(callback);
+  }
+
+  /**
+   * 注册结束回调
+   * 当Body接收完毕时触发
+   * @param callback 结束回调函数
+   */
+  public onEnd(callback: EndCallback): void {
+    this.endCallbacks.push(callback);
+  }
+
+  /**
+   * 注册错误回调
+   * 当传输过程中发生错误时触发
+   * @param callback 错误回调函数
+   */
+  public onError(callback: ErrorCallback): void {
+    this.errorCallbacks.push(callback);
+  }
+
+  /**
+   * 触发数据回调（由HttpServer调用）
+   * @param chunk 数据块
+   */
+  public emitData(chunk: ArrayBuffer): void {
+    this.receivedBytes += chunk.byteLength;
+    
+    // 如果未启用流式模式，累积到rawBody
+    if (!this._streamingEnabled) {
+      this.rawBody = Utils.mergeArrayBuffers(this.rawBody, chunk);
+    }
+    
+    // 触发所有数据回调
+    for (const callback of this.dataCallbacks) {
+      try {
+        callback(chunk);
+      } catch (error) {
+        console.error('数据回调执行错误:', error);
+      }
+    }
+  }
+
+  /**
+   * 触发结束回调（由HttpServer调用）
+   */
+  public emitEnd(): void {
+    // 如果未启用流式模式，自动解析Body
+    if (!this._streamingEnabled && this.rawBody.byteLength > 0) {
+      this.parseBody();
+    }
+    
+    // 触发所有结束回调
+    for (const callback of this.endCallbacks) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('结束回调执行错误:', error);
+      }
+    }
+  }
+
+  /**
+   * 触发错误回调（由HttpServer调用）
+   * @param error 错误信息
+   */
+  public emitError(error: BusinessError): void {
+    // 触发所有错误回调
+    for (const callback of this.errorCallbacks) {
+      try {
+        callback(error);
+      } catch (err) {
+        console.error('错误回调执行错误:', err);
+      }
+    }
+  }
+
+  /**
+   * 获取已接收的字节数
+   * @returns 已接收字节数
+   */
+  public getReceivedBytes(): number {
+    return this.receivedBytes;
+  }
+
+  /**
+   * 获取期望接收的总字节数（Content-Length）
+   * @returns 期望字节数，0表示未知
+   */
+  public getExpectedBytes(): number {
+    return this.contentLength;
+  }
+
+  /**
+   * 检查是否接收完毕
+   * @returns 是否接收完毕
+   */
+  public isComplete(): boolean {
+    const expected = this.getExpectedBytes();
+    return expected > 0 && this.receivedBytes >= expected;
   }
 }

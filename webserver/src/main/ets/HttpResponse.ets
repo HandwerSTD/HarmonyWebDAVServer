@@ -8,6 +8,7 @@
 import { socket } from '@kit.NetworkKit';
 import { StatusCode } from './StatusCode';
 import { Utils } from './Utils';
+import { fileIo } from '@kit.CoreFileKit';
 
 
 /**
@@ -24,6 +25,7 @@ export class HttpResponse {
   private socket: socket.TCPSocketConnection | socket.TLSSocketConnection
   private statusCode: number = 200; // HTTP状态码
   private headers: Map<string, string> = new Map(); // 响应头集合
+  private requestHeaders: Map<string, string> | null = null; // 请求头引用（用于Range请求）
   private _headersSent: boolean = false; // 响应头是否已发送
   private finishCallbacks: ResponseFinishCallback[] = []; // 响应完成回调列表
   private _finished: boolean = false; // 响应是否已完成
@@ -118,6 +120,14 @@ export class HttpResponse {
    */
   public onFinish(callback: ResponseFinishCallback): void {
     this.finishCallbacks.push(callback);
+  }
+
+  /**
+   * 设置请求头引用（用于Range请求）
+   * @param headers 请求头Map
+   */
+  public setRequestHeaders(headers: Map<string, string>): void {
+    this.requestHeaders = headers;
   }
 
   /**
@@ -330,5 +340,150 @@ export class HttpResponse {
       return body;
     }
     return new ArrayBuffer(0);
+  }
+
+  // ==================== 文件流式传输方法 ====================
+
+  /**
+   * 流式发送文件
+   * 支持Range请求（断点续传）
+   * @param filePath 文件路径
+   * @param options 可选配置（如自定义MIME类型）
+   */
+  public async sendFile(filePath: string, options?: { contentType?: string }): Promise<void> {
+    if (this._finished) {
+      console.error("Response already finished.");
+      return;
+    }
+
+    let file: fileIo.File | null = null;
+    try {
+      // 检查文件是否存在
+      const exists = await fileIo.access(filePath);
+      if (!exists) {
+        this.status(404).json({ error: 'File not found', path: filePath } as ESObject);
+        return;
+      }
+
+      // 获取文件信息
+      const stat = await fileIo.stat(filePath);
+      const fileSize = stat.size;
+
+      // 设置Content-Type
+      const contentType = options?.contentType || Utils.getMimeType(filePath);
+      this.setHeader('Content-Type', contentType);
+
+      // 打开文件
+      file = await fileIo.open(filePath, fileIo.OpenMode.READ_ONLY);
+
+      // 检查Range请求
+      const rangeHeader = this.requestHeaders?.get('range');
+      if (rangeHeader) {
+        // 处理Range请求
+        await this.handleRangeRequest(file, fileSize, rangeHeader);
+      } else {
+        // 完整文件传输
+        this.setHeader('Content-Length', fileSize.toString());
+        this.setHeader('Accept-Ranges', 'bytes');
+        
+        // 流式发送文件
+        await this.streamFile(file, fileSize);
+      }
+    } catch (error) {
+      console.error('文件传输失败:', error);
+      if (!this._headersSent) {
+        this.status(500).json({ error: 'Internal Server Error' } as ESObject);
+      }
+    } finally {
+      // 确保关闭文件句柄
+      if (file) {
+        try {
+          await fileIo.close(file.fd);
+        } catch (e) {
+          console.error('关闭文件失败:', e);
+        }
+      }
+    }
+  }
+
+  /**
+   * 处理Range请求（断点续传）
+   * @param file 文件句柄
+   * @param fileSize 文件总大小
+   * @param rangeHeader Range头部值
+   */
+  private async handleRangeRequest(file: fileIo.File, fileSize: number, rangeHeader: string): Promise<void> {
+    // 解析Range头部：bytes=start-end
+    const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (!rangeMatch) {
+      // 无效的Range请求
+      this.status(416).setHeader('Content-Range', `bytes */${fileSize}`).send();
+      return;
+    }
+
+    let start = parseInt(rangeMatch[1]);
+    let end = rangeMatch[2] ? parseInt(rangeMatch[2]) : fileSize - 1;
+
+    // 验证范围
+    if (start >= fileSize || start > end || end >= fileSize) {
+      this.status(416).setHeader('Content-Range', `bytes */${fileSize}`).send();
+      return;
+    }
+
+    const contentLength = end - start + 1;
+
+    // 设置206 Partial Content响应
+    this.status(206);
+    this.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+    this.setHeader('Content-Length', contentLength.toString());
+    this.setHeader('Accept-Ranges', 'bytes');
+
+    // 流式发送指定范围的数据
+    await this.streamFileRange(file, start, end);
+  }
+
+  /**
+   * 流式发送完整文件
+   * @param file 文件句柄
+   * @param fileSize 文件大小
+   */
+  private async streamFile(file: fileIo.File, fileSize: number): Promise<void> {
+    const chunkSize = 64 * 1024; // 64KB per chunk
+    let offset = 0;
+
+    while (offset < fileSize) {
+      const readSize = Math.min(chunkSize, fileSize - offset);
+      const buffer = new ArrayBuffer(readSize);
+
+      await fileIo.read(file.fd, buffer, { offset: offset });
+      await this.write(buffer);
+
+      offset += readSize;
+    }
+
+    await this.end();
+  }
+
+  /**
+   * 流式发送文件指定范围
+   * @param file 文件句柄
+   * @param start 起始位置
+   * @param end 结束位置
+   */
+  private async streamFileRange(file: fileIo.File, start: number, end: number): Promise<void> {
+    const chunkSize = 64 * 1024; // 64KB per chunk
+    let offset = start;
+
+    while (offset <= end) {
+      const readSize = Math.min(chunkSize, end - offset + 1);
+      const buffer = new ArrayBuffer(readSize);
+
+      await fileIo.read(file.fd, buffer, { offset: offset });
+      await this.write(buffer);
+
+      offset += readSize;
+    }
+
+    await this.end();
   }
 }

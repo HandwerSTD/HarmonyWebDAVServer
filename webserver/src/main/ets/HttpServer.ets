@@ -394,50 +394,248 @@ export class HttpServer {
   }
 
   /**
+   * 客户端连接状态枚举
+   */
+  private enum ClientState {
+    WAITING_HEADER,    // 等待接收完整的HTTP头部
+    STREAMING_BODY     // 正在流式接收Body数据
+  }
+
+  /**
+   * 客户端连接上下文
+   */
+  private interface ClientContext {
+    state: ClientState;                    // 当前状态
+    headerBuffer: ArrayBuffer;             // 头部缓冲区（仅用于Header解析）
+    req: HttpRequest | null;               // 已创建的请求对象
+    res: HttpResponse | null;              // 已创建的响应对象
+    contentLength: number;                 // 期望的Body长度
+    receivedBodyLength: number;            // 已接收的Body长度
+    isChunked: boolean;                    // 是否为分块传输
+    chunkBuffer: ArrayBuffer;              // 分块传输缓冲区
+  }
+
+  /**
    * 处理客户端连接
    * @param clientSocket 客户端Socket连接
    */
   protected handleClient(clientSocket: socket.TCPSocketConnection | socket.TLSSocketConnection) {
     this.clients.set(clientSocket.clientId, clientSocket);
-    let buffer = new ArrayBuffer(0);
+    
+    // 初始化客户端上下文
+    const ctx: ClientContext = {
+      state: ClientState.WAITING_HEADER,
+      headerBuffer: new ArrayBuffer(0),
+      req: null,
+      res: null,
+      contentLength: 0,
+      receivedBodyLength: 0,
+      isChunked: false,
+      chunkBuffer: new ArrayBuffer(0)
+    };
+
     clientSocket.on('message', async (data) => {
       try {
-        // 将新数据追加到缓冲区
-        buffer = Utils.mergeArrayBuffers(buffer, data.message);
-
-        // 检查是否有完整的HTTP请求
-        const completeRequest = this.isRequestComplete(buffer);
-        if (completeRequest) {
-          // 处理请求
-          data.message = buffer
-
-          // 发射请求接收事件
-          this.eventEmitter.emit({
-            type: ServerEventType.REQUEST_RECEIVED,
-            data: { clientSocket, data }
-          });
-
-          const req = new HttpRequest(data);
-          const res = new HttpResponse(clientSocket);
-
-          // 添加响应完成回调
-          res.onFinish((statusCode, responseSize) => {
+        if (ctx.state === ClientState.WAITING_HEADER) {
+          // 状态：等待Header
+          // 将新数据追加到头部缓冲区（仅用于Header解析）
+          ctx.headerBuffer = Utils.mergeArrayBuffers(ctx.headerBuffer, data.message);
+          
+          // 检查是否收到完整的Header（以\r\n\r\n结尾）
+          const headerEndIndex = this.findHeaderEnd(ctx.headerBuffer);
+          if (headerEndIndex !== -1) {
+            // Header已完整，立即解析并分发路由
+            const headerData = ctx.headerBuffer.slice(0, headerEndIndex);
+            
+            // 提取Header后的初始Body数据（如果有）
+            const initialBodyData = ctx.headerBuffer.slice(headerEndIndex);
+            
+            // 解析Header获取Content-Length和Transfer-Encoding
+            const headerStr = Utils.arrayBufferToStr(headerData);
+            const contentLengthMatch = headerStr.match(/Content-Length:\s*(\d+)/i);
+            const transferEncodingMatch = headerStr.match(/Transfer-Encoding:\s*chunked/i);
+            
+            ctx.contentLength = contentLengthMatch ? parseInt(contentLengthMatch[1]) : 0;
+            ctx.isChunked = transferEncodingMatch !== null;
+            
+            // 创建HttpRequest和HttpResponse
+            const socketData: socket.SocketMessageInfo = {
+              message: headerData,
+              remoteInfo: data.remoteInfo
+            };
+            
+            ctx.req = new HttpRequest(socketData);
+            ctx.res = new HttpResponse(clientSocket);
+            
+            // 发射请求接收事件
             this.eventEmitter.emit({
-              type: ServerEventType.RESPONSE_SENT,
-              data: { clientSocket, statusCode, responseSize }
+              type: ServerEventType.REQUEST_RECEIVED,
+              data: { clientSocket, data: socketData }
             });
-          });
-
-          this.router.handle(req, res);
-          // 清空缓冲区
-          buffer = new ArrayBuffer(0);
+            
+            // 添加响应完成回调
+            ctx.res.onFinish((statusCode, responseSize) => {
+              this.eventEmitter.emit({
+                type: ServerEventType.RESPONSE_SENT,
+                data: { clientSocket, statusCode, responseSize }
+              });
+            });
+            
+            // 切换到流式Body状态
+            ctx.state = ClientState.STREAMING_BODY;
+            
+            // 立即调用路由处理器（不等待Body）
+            this.router.handle(ctx.req, ctx.res);
+            
+            // 如果有初始Body数据，立即通过回调分发
+            if (initialBodyData.byteLength > 0 && ctx.req) {
+              ctx.receivedBodyLength += initialBodyData.byteLength;
+              ctx.req.emitData(initialBodyData);
+            }
+            
+            // 清空头部缓冲区
+            ctx.headerBuffer = new ArrayBuffer(0);
+          }
+        } else if (ctx.state === ClientState.STREAMING_BODY) {
+          // 状态：流式接收Body
+          if (ctx.req) {
+            if (ctx.isChunked) {
+              // 分块传输：累积数据并解析
+              ctx.chunkBuffer = Utils.mergeArrayBuffers(ctx.chunkBuffer, data.message);
+              const { chunks, remaining } = this.parseChunkedData(ctx.chunkBuffer);
+              
+              for (const chunk of chunks) {
+                ctx.receivedBodyLength += chunk.byteLength;
+                ctx.req.emitData(chunk);
+              }
+              
+              ctx.chunkBuffer = remaining;
+              
+              // 检查是否收到结束标记
+              if (this.isChunkedComplete(ctx.chunkBuffer)) {
+                ctx.req.emitEnd();
+                ctx.state = ClientState.WAITING_HEADER;
+                this.resetClientContext(ctx);
+              }
+            } else {
+              // Content-Length模式：直接分发数据
+              ctx.receivedBodyLength += data.message.byteLength;
+              ctx.req.emitData(data.message);
+              
+              // 检查是否接收完毕
+              if (ctx.contentLength > 0 && ctx.receivedBodyLength >= ctx.contentLength) {
+                ctx.req.emitEnd();
+                ctx.state = ClientState.WAITING_HEADER;
+                this.resetClientContext(ctx);
+              }
+            }
+          }
         }
       } catch (error) {
         this.eventEmitter.emitError(error, ServerErrorType.CLIENT_ERROR);
       }
     });
-    clientSocket.on('error', (err) => this.removeClient(clientSocket, err));
-    clientSocket.on('close', () => this.removeClient(clientSocket));
+    
+    clientSocket.on('error', (err) => {
+      // 清理资源
+      if (ctx.req) {
+        ctx.req.emitError(err);
+      }
+      this.removeClient(clientSocket, err);
+    });
+    
+    clientSocket.on('close', () => {
+      // 清理资源
+      if (ctx.req) {
+        ctx.req.emitEnd();
+      }
+      this.removeClient(clientSocket);
+    });
+  }
+
+  /**
+   * 查找Header结束位置
+   * @param buffer 缓冲区数据
+   * @returns Header结束位置（包含\r\n\r\n），-1表示未找到
+   */
+  private findHeaderEnd(buffer: ArrayBuffer): number {
+    const bufferStr = Utils.arrayBufferToStr(buffer);
+    const headerEndIndex = bufferStr.indexOf('\r\n\r\n');
+    return headerEndIndex !== -1 ? headerEndIndex + 4 : -1;
+  }
+
+  /**
+   * 解析分块传输数据
+   * @param buffer 缓冲区数据
+   * @returns 解析出的数据块和剩余数据
+   */
+  private parseChunkedData(buffer: ArrayBuffer): { chunks: ArrayBuffer[], remaining: ArrayBuffer } {
+    const chunks: ArrayBuffer[] = [];
+    const bufferStr = Utils.arrayBufferToStr(buffer);
+    let offset = 0;
+    let lastChunkEnd = 0;
+
+    while (offset < bufferStr.length) {
+      const crlfIndex = bufferStr.indexOf('\r\n', offset);
+      if (crlfIndex === -1) {
+        break;
+      }
+
+      const chunkSizeStr = bufferStr.substring(offset, crlfIndex);
+      const chunkSize = parseInt(chunkSizeStr, 16);
+
+      if (isNaN(chunkSize)) {
+        break;
+      }
+
+      if (chunkSize === 0) {
+        // 结束块
+        lastChunkEnd = crlfIndex + 2;
+        break;
+      }
+
+      const chunkStart = crlfIndex + 2;
+      const chunkEnd = chunkStart + chunkSize;
+
+      if (chunkEnd + 2 > bufferStr.length) {
+        // 数据不完整，等待更多数据
+        break;
+      }
+
+      const chunkData = buffer.slice(chunkStart, chunkEnd);
+      chunks.push(chunkData);
+
+      offset = chunkEnd + 2;
+      lastChunkEnd = offset;
+    }
+
+    const remaining = buffer.slice(lastChunkEnd);
+    return { chunks, remaining };
+  }
+
+  /**
+   * 检查分块传输是否完成
+   * @param buffer 缓冲区数据
+   * @returns 是否完成
+   */
+  private isChunkedComplete(buffer: ArrayBuffer): boolean {
+    const bufferStr = Utils.arrayBufferToStr(buffer);
+    return bufferStr.includes('0\r\n\r\n');
+  }
+
+  /**
+   * 重置客户端上下文
+   * @param ctx 客户端上下文
+   */
+  private resetClientContext(ctx: ClientContext): void {
+    ctx.state = ClientState.WAITING_HEADER;
+    ctx.headerBuffer = new ArrayBuffer(0);
+    ctx.req = null;
+    ctx.res = null;
+    ctx.contentLength = 0;
+    ctx.receivedBodyLength = 0;
+    ctx.isChunked = false;
+    ctx.chunkBuffer = new ArrayBuffer(0);
   }
 
   /**
