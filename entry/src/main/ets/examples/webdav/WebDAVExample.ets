@@ -5,9 +5,9 @@
  * @description : WebDAV服务器示例 - 展示如何使用WebDAVServer
  */
 
-import { WebDAVServer } from '@cxy/webserver/webdav/WebDAVServer';
 import { socket } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
+import { WebDAVServer } from '@cxy/webserver';
 
 /**
  * WebDAV示例类

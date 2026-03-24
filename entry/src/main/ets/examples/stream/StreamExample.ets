@@ -300,7 +300,7 @@ export class StreamExample {
           });
         } catch (error) {
           await fileIo.close(file.fd);
-          throw error;
+          throw Error(error);
         }
       } catch (error) {
         console.error('流式上传失败:', error);

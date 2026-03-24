@@ -14,4 +14,6 @@ export * from './src/main/ets/middleware/index'
 
 export * from './src/main/ets/ServerEvents'
 
+export * from './src/main/ets/webdav/WebDAVServer'
+
 

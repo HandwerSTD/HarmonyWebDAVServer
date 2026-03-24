@@ -17,6 +17,37 @@ import { fileIo } from '@kit.CoreFileKit';
 export type ResponseFinishCallback = (statusCode: number, responseSize: number) => void;
 
 /**
+ * 发送文件选项
+ */
+interface SendFileOptions {
+  contentType?: string;
+}
+
+/**
+ * WebDAV属性状态
+ */
+interface WebDAVPropStat {
+  status?: string;
+  prop?: Record<string, string>;
+}
+
+/**
+ * WebDAV响应项
+ */
+interface WebDAVResponseItem {
+  href?: string;
+  propstat?: WebDAVPropStat;
+  status?: string;
+}
+
+/**
+ * WebDAV多状态数据
+ */
+interface WebDAVMultiStatus {
+  responses?: WebDAVResponseItem[];
+}
+
+/**
  * HTTP响应类
  * 用于构建和发送HTTP响应
  * 支持普通响应和流式传输
@@ -344,28 +375,36 @@ export class HttpResponse {
     xml += '<D:multistatus xmlns:D="DAV:">\n';
     
     // 处理响应数据
-    if (data.responses && Array.isArray(data.responses)) {
-      for (const response of data.responses) {
+    const multiStatus = data as WebDAVMultiStatus;
+    const responses = multiStatus.responses;
+    if (responses) {
+      for (let i = 0; i < responses.length; i++) {
+        const resp = responses[i];
         xml += '  <D:response>\n';
-        xml += `    <D:href>${response.href || '/'}</D:href>\n`;
+        xml += `    <D:href>${resp.href || '/'}</D:href>\n`;
         
-        if (response.propstat) {
+        if (resp.propstat) {
+          const propstat = resp.propstat;
           xml += '    <D:propstat>\n';
           xml += '      <D:prop>\n';
           
-          if (response.propstat.prop) {
-            for (const [key, value] of Object.entries(response.propstat.prop)) {
+          if (propstat.prop) {
+            const prop = propstat.prop;
+            const entries = Object.entries(prop) as [string, string][];
+            for (let j = 0; j < entries.length; j++) {
+              const key = entries[j][0];
+              const value = entries[j][1];
               xml += `        <D:${key}>${value}</D:${key}>\n`;
             }
           }
           
           xml += '      </D:prop>\n';
-          xml += `      <D:status>HTTP/1.1 ${response.propstat.status || '200 OK'}</D:status>\n`;
+          xml += `      <D:status>HTTP/1.1 ${propstat.status || '200 OK'}</D:status>\n`;
           xml += '    </D:propstat>\n';
         }
         
-        if (response.status) {
-          xml += `    <D:status>HTTP/1.1 ${response.status}</D:status>\n`;
+        if (resp.status) {
+          xml += `    <D:status>HTTP/1.1 ${resp.status}</D:status>\n`;
         }
         
         xml += '  </D:response>\n';
@@ -425,7 +464,7 @@ export class HttpResponse {
    * @param filePath 文件路径
    * @param options 可选配置（如自定义MIME类型）
    */
-  public async sendFile(filePath: string, options?: { contentType?: string }): Promise<void> {
+  public async sendFile(filePath: string, options?: SendFileOptions): Promise<void> {
     if (this._finished) {
       console.error("Response already finished.");
       return;

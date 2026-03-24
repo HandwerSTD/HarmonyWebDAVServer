@@ -87,6 +87,14 @@
       "data": {
         "description": "page"
       }
+    },
+    {
+      "name": "WebDAVPage",
+      "pageSourceFile": "src/main/ets/examples/webdav/WebDAVPage.ets",
+      "buildFunction": "webdavBuilder",
+      "data": {
+        "description": "page"
+      }
     }
   ]
 }

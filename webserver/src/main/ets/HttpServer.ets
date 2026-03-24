@@ -35,9 +35,35 @@ import {
 } from './ServerEvents';
 
 /**
+ * 客户端连接状态枚举
+ */
+ enum ClientState {
+  WAITING_HEADER,    // 等待接收完整的HTTP头部
+  STREAMING_BODY     // 正在流式接收Body数据
+}
+
+/**
+ * 客户端连接上下文
+ */
+ interface ClientContext {
+  state: ClientState;                    // 当前状态
+  headerBuffer: ArrayBuffer;             // 头部缓冲区（仅用于Header解析）
+  req: HttpRequest | null;               // 已创建的请求对象
+  res: HttpResponse | null;              // 已创建的响应对象
+  contentLength: number;                 // 期望的Body长度
+  receivedBodyLength: number;            // 已接收的Body长度
+  isChunked: boolean;                    // 是否为分块传输
+  chunkBuffer: ArrayBuffer;              // 分块传输缓冲区
+}
+/**
  * Http 服务器类
  * 提供HTTP服务器功能，支持路由、中间件等特性
  */
+interface HttpChunkedData {
+  chunks: ArrayBuffer[];
+  remaining: ArrayBuffer;
+}
+
 export class HttpServer {
   protected router: Router = new Router(); // 路由管理器
   protected configs: Map<string, Object> = new Map(); // 配置存储
@@ -474,27 +500,6 @@ export class HttpServer {
     }
   }
 
-  /**
-   * 客户端连接状态枚举
-   */
-  private enum ClientState {
-    WAITING_HEADER,    // 等待接收完整的HTTP头部
-    STREAMING_BODY     // 正在流式接收Body数据
-  }
-
-  /**
-   * 客户端连接上下文
-   */
-  private interface ClientContext {
-    state: ClientState;                    // 当前状态
-    headerBuffer: ArrayBuffer;             // 头部缓冲区（仅用于Header解析）
-    req: HttpRequest | null;               // 已创建的请求对象
-    res: HttpResponse | null;              // 已创建的响应对象
-    contentLength: number;                 // 期望的Body长度
-    receivedBodyLength: number;            // 已接收的Body长度
-    isChunked: boolean;                    // 是否为分块传输
-    chunkBuffer: ArrayBuffer;              // 分块传输缓冲区
-  }
 
   /**
    * 处理客户端连接
@@ -583,7 +588,9 @@ export class HttpServer {
             if (ctx.isChunked) {
               // 分块传输：累积数据并解析
               ctx.chunkBuffer = Utils.mergeArrayBuffers(ctx.chunkBuffer, data.message);
-              const { chunks, remaining } = this.parseChunkedData(ctx.chunkBuffer);
+              const GeneratedDestructObj_1 = this.parseChunkedData(ctx.chunkBuffer);
+              const chunks = GeneratedDestructObj_1.chunks;
+              const remaining = GeneratedDestructObj_1.remaining;
               
               for (const chunk of chunks) {
                 ctx.receivedBodyLength += chunk.byteLength;
@@ -650,7 +657,7 @@ export class HttpServer {
    * @param buffer 缓冲区数据
    * @returns 解析出的数据块和剩余数据
    */
-  private parseChunkedData(buffer: ArrayBuffer): { chunks: ArrayBuffer[], remaining: ArrayBuffer } {
+  private parseChunkedData(buffer: ArrayBuffer): HttpChunkedData {
     const chunks: ArrayBuffer[] = [];
     const bufferStr = Utils.arrayBufferToStr(buffer);
     let offset = 0;

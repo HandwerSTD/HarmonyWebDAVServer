@@ -45,7 +45,7 @@ export class FileSystemAdapter {
    */
   public static async stat(path: string): Promise<FileInfo | null> {
     try {
-      const exists = await this.exists(path);
+      const exists = await FileSystemAdapter.exists(path);
       if (!exists) {
         return null;
       }
@@ -60,7 +60,7 @@ export class FileSystemAdapter {
         size: stat.size,
         lastModified: stat.mtime,
         createdTime: stat.ctime,
-        mimeType: this.getMimeType(name)
+        mimeType: FileSystemAdapter.getMimeType(name)
       };
     } catch (error) {
       console.error('获取文件信息失败:', error);
@@ -75,7 +75,7 @@ export class FileSystemAdapter {
    */
   public static async listDir(dirPath: string): Promise<FileInfo[]> {
     try {
-      const exists = await this.exists(dirPath);
+      const exists = await FileSystemAdapter.exists(dirPath);
       if (!exists) {
         return [];
       }
@@ -90,7 +90,7 @@ export class FileSystemAdapter {
 
       for (const fileName of list) {
         const filePath = `${dirPath}/${fileName}`;
-        const fileInfo = await this.stat(filePath);
+        const fileInfo = await FileSystemAdapter.stat(filePath);
         if (fileInfo) {
           files.push(fileInfo);
         }
@@ -110,7 +110,7 @@ export class FileSystemAdapter {
    */
   public static async mkdir(path: string): Promise<boolean> {
     try {
-      const exists = await this.exists(path);
+      const exists = await FileSystemAdapter.exists(path);
       if (exists) {
         return false; // 已存在
       }
@@ -130,7 +130,7 @@ export class FileSystemAdapter {
    */
   public static async unlink(path: string): Promise<boolean> {
     try {
-      const exists = await this.exists(path);
+      const exists = await FileSystemAdapter.exists(path);
       if (!exists) {
         return false;
       }
@@ -150,23 +150,23 @@ export class FileSystemAdapter {
    */
   public static async rmdir(path: string): Promise<boolean> {
     try {
-      const exists = await this.exists(path);
+      const exists = await FileSystemAdapter.exists(path);
       if (!exists) {
         return false;
       }
 
       const stat = await fileIo.stat(path);
       if (!stat.isDirectory()) {
-        return await this.unlink(path);
+        return await FileSystemAdapter.unlink(path);
       }
 
       // 递归删除目录内容
-      const files = await this.listDir(path);
+      const files = await FileSystemAdapter.listDir(path);
       for (const file of files) {
         if (file.isDirectory) {
-          await this.rmdir(file.path);
+          await FileSystemAdapter.rmdir(file.path);
         } else {
-          await this.unlink(file.path);
+          await FileSystemAdapter.unlink(file.path);
         }
       }
 
@@ -187,7 +187,7 @@ export class FileSystemAdapter {
    */
   public static async move(srcPath: string, destPath: string): Promise<boolean> {
     try {
-      const exists = await this.exists(srcPath);
+      const exists = await FileSystemAdapter.exists(srcPath);
       if (!exists) {
         return false;
       }
@@ -209,7 +209,7 @@ export class FileSystemAdapter {
    */
   public static async copy(srcPath: string, destPath: string): Promise<boolean> {
     try {
-      const exists = await this.exists(srcPath);
+      const exists = await FileSystemAdapter.exists(srcPath);
       if (!exists) {
         return false;
       }
@@ -251,7 +251,7 @@ export class FileSystemAdapter {
    */
   public static async readFile(path: string): Promise<ArrayBuffer | null> {
     try {
-      const exists = await this.exists(path);
+      const exists = await FileSystemAdapter.exists(path);
       if (!exists) {
         return null;
       }

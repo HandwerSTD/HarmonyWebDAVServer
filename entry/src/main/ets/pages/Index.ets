@@ -20,6 +20,7 @@ struct Index {
     ['分片上传示例', 'UploadPage'],
     ['流式传输示例', 'StreamPage'],
     ['文件上传示例', 'FileUploadPage'],
+    ['WebDAV服务器示例', 'WebDAVPage'],
   ]
 
   build() {

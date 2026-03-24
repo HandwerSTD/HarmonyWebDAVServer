@@ -7,8 +7,10 @@
 
 import { HttpServer, HttpRequest, HttpResponse } from '../Index';
 import { socket } from '@kit.NetworkKit';
+import { fileIo } from '@kit.CoreFileKit';
 import { FileSystemAdapter, FileInfo } from './FileSystemAdapter';
 import { Utils } from '../Utils';
+import { ObjectSpread } from './ObjectSpread';
 
 /**
  * WebDAV服务器配置
@@ -45,13 +47,12 @@ export class WebDAVServer {
    * @param options 配置选项
    */
   constructor(options: WebDAVServerOptions = {}) {
-    this.options = {
+    this.options = ObjectSpread({
       port: 8080,
       host: '',
       enableAuth: false,
       enableLogging: true,
-      ...options
-    };
+    }, options)
     this.server = new HttpServer();
     this.setupMiddleware();
     this.setupRoutes();
@@ -130,9 +131,8 @@ export class WebDAVServer {
     // CORS中间件
     this.server.cors({
       origin: '*',
-      methods: 'GET,POST,PUT,DELETE,OPTIONS,HEAD,MKCOL,PROPFIND,PROPPATCH,COPY,MOVE,LOCK,UNLOCK',
-      allowedHeaders: 'Content-Type,Authorization,Depth,Destination,Overwrite,If,Lock-Token',
-      credentials: true
+      methods: ['GET','POST','PUT','DELETE','OPTIONS','HEAD','MKCOL','PROPFIND','PROPPATCH','COPY','MOVE','LOCK','UNLOCK'],
+      allowedHeaders: ['Content-Type','Authorization','Depth','Destination','Overwrite','If','Lock-Token'],
     });
   }
 
@@ -203,16 +203,19 @@ export class WebDAVServer {
    * 处理PROPFIND请求
    */
   private async handlePropfind(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const GeneratedDestructObj_1 = this.resolvePath(req.path);
+    const virtualPath = GeneratedDestructObj_1.virtualPath;
+    const realPath = GeneratedDestructObj_1.realPath;
+    const mapping = GeneratedDestructObj_1.mapping;
     
     if (!mapping) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
     // 安全检查
     if (!this.isPathSafe(realPath, mapping.realPath)) {
-      res.status(403).json({ error: 'Forbidden' } as ESObject);
+      res.status(403).json({ error: 'Forbidden' });
       return;
     }
 
@@ -220,13 +223,13 @@ export class WebDAVServer {
     const exists = await FileSystemAdapter.exists(realPath);
 
     if (!exists) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
     const fileInfo = await FileSystemAdapter.stat(realPath);
     if (!fileInfo) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
@@ -247,49 +250,57 @@ export class WebDAVServer {
       }
     }
 
-    await res.multiStatus({ responses } as ESObject);
+    await res.multiStatus({ responses });
   }
 
   /**
    * 处理GET请求
    */
   private async handleGet(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const GeneratedDestructObj_1 = this.resolvePath(req.path);
+    const virtualPath = GeneratedDestructObj_1.virtualPath;
+    const realPath = GeneratedDestructObj_1.realPath;
+    const mapping = GeneratedDestructObj_1.mapping;
     
     if (!mapping) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
     if (!this.isPathSafe(realPath, mapping.realPath)) {
-      res.status(403).json({ error: 'Forbidden' } as ESObject);
+      res.status(403).json({ error: 'Forbidden' });
       return;
     }
 
     const exists = await FileSystemAdapter.exists(realPath);
     if (!exists) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
     const fileInfo = await FileSystemAdapter.stat(realPath);
     if (!fileInfo) {
-      res.status(404).json({ error: 'Not Found' } as ESObject);
+      res.status(404).json({ error: 'Not Found' });
       return;
     }
 
     if (fileInfo.isDirectory) {
       // 目录：返回列表
       const children = await FileSystemAdapter.listDir(realPath);
-      res.json({
-        path: virtualPath,
-        type: 'directory',
-        items: children.map(c => ({
+      const items: DirListItem[] = [];
+      for (const c of children) {
+        const item: DirListItem = {
           name: c.name,
           isDirectory: c.isDirectory,
           size: c.size,
           lastModified: c.lastModified
-        }))
+        };
+        items.push(item);
+      }
+      res.json({
+        path: virtualPath,
+        type: 'directory',
+        items: items
       } as ESObject);
     } else {
       // 文件：使用sendFile发送
@@ -302,7 +313,10 @@ export class WebDAVServer {
    * 处理HEAD请求
    */
   private async handleHead(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
     
     if (!mapping || !this.isPathSafe(realPath, mapping.realPath)) {
       res.status(404).send();
@@ -325,7 +339,10 @@ export class WebDAVServer {
    * 处理PUT请求
    */
   private async handlePut(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
     
     if (!mapping) {
       res.status(404).json({ error: 'Not Found' } as ESObject);
@@ -348,7 +365,6 @@ export class WebDAVServer {
     }
 
     // 打开文件用于写入
-    const { fileIo } = await import('@kit.CoreFileKit');
     const file = await fileIo.open(realPath, 
       fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
 
@@ -375,7 +391,10 @@ export class WebDAVServer {
    * 处理DELETE请求
    */
   private async handleDelete(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
     
     if (!mapping || !this.isPathSafe(realPath, mapping.realPath)) {
       res.status(404).json({ error: 'Not Found' } as ESObject);
@@ -412,7 +431,10 @@ export class WebDAVServer {
    * 处理MKCOL请求
    */
   private async handleMkcol(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath, realPath, mapping } = this.resolvePath(req.path);
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
     
     if (!mapping || !this.isPathSafe(realPath, mapping.realPath)) {
       res.status(403).json({ error: 'Forbidden' } as ESObject);
@@ -437,7 +459,10 @@ export class WebDAVServer {
    * 处理MOVE请求
    */
   private async handleMove(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath: srcVirtual, realPath: srcReal, mapping: srcMapping } = this.resolvePath(req.path);
+    const srcPathResult = this.resolvePath(req.path);
+    const srcVirtual = srcPathResult.virtualPath;
+    const srcReal = srcPathResult.realPath;
+    const srcMapping = srcPathResult.mapping;
     const destination = req.headers.get('destination');
 
     if (!srcMapping || !this.isPathSafe(srcReal, srcMapping.realPath)) {
@@ -452,7 +477,10 @@ export class WebDAVServer {
 
     // 解析目标路径
     const destUrl = this.parseDestinationUrl(destination);
-    const { virtualPath: destVirtual, realPath: destReal, mapping: destMapping } = this.resolvePath(destUrl);
+    const destPathResult = this.resolvePath(destUrl);
+    const destVirtual = destPathResult.virtualPath;
+    const destReal = destPathResult.realPath;
+    const destMapping = destPathResult.mapping;
 
     if (!destMapping || !this.isPathSafe(destReal, destMapping.realPath)) {
       res.status(403).json({ error: 'Forbidden destination' } as ESObject);
@@ -471,7 +499,10 @@ export class WebDAVServer {
    * 处理COPY请求
    */
   private async handleCopy(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const { virtualPath: srcVirtual, realPath: srcReal, mapping: srcMapping } = this.resolvePath(req.path);
+    const srcPathResult = this.resolvePath(req.path);
+    const srcVirtual = srcPathResult.virtualPath;
+    const srcReal = srcPathResult.realPath;
+    const srcMapping = srcPathResult.mapping;
     const destination = req.headers.get('destination');
 
     if (!srcMapping || !this.isPathSafe(srcReal, srcMapping.realPath)) {
@@ -485,7 +516,10 @@ export class WebDAVServer {
     }
 
     const destUrl = this.parseDestinationUrl(destination);
-    const { virtualPath: destVirtual, realPath: destReal, mapping: destMapping } = this.resolvePath(destUrl);
+    const destPathResult = this.resolvePath(destUrl);
+    const destVirtual = destPathResult.virtualPath;
+    const destReal = destPathResult.realPath;
+    const destMapping = destPathResult.mapping;
 
     if (!destMapping || !this.isPathSafe(destReal, destMapping.realPath)) {
       res.status(403).json({ error: 'Forbidden destination' } as ESObject);
@@ -505,14 +539,15 @@ export class WebDAVServer {
   /**
    * 解析路径：将虚拟路径转换为物理路径
    */
-  private resolvePath(requestPath: string): { virtualPath: string; realPath: string; mapping: PathMapping | null } {
+  private resolvePath(requestPath: string): ResolvePathResult {
     const normalizedPath = FileSystemAdapter.normalizePath(requestPath);
     
     // 查找匹配的映射
     let bestMatch: PathMapping | null = null;
     let bestMatchLength = 0;
 
-    for (const [_, mapping] of this.pathMappings) {
+    for (const entry of this.pathMappings) {
+      const mapping = entry[1];
       if (normalizedPath.startsWith(mapping.virtualPath)) {
         if (mapping.virtualPath.length > bestMatchLength) {
           bestMatch = mapping;
@@ -522,7 +557,12 @@ export class WebDAVServer {
     }
 
     if (!bestMatch) {
-      return { virtualPath: normalizedPath, realPath: '', mapping: null };
+      const result: ResolvePathResult = {
+        virtualPath: normalizedPath,
+        realPath: '',
+        mapping: null
+      };
+      return result;
     }
 
     // 计算相对路径
@@ -531,7 +571,12 @@ export class WebDAVServer {
       ? FileSystemAdapter.joinPath(bestMatch.realPath, relativePath)
       : bestMatch.realPath;
 
-    return { virtualPath: normalizedPath, realPath, mapping: bestMatch };
+    const result: ResolvePathResult = {
+      virtualPath: normalizedPath,
+      realPath: realPath,
+      mapping: bestMatch
+    };
+    return result;
   }
 
   /**
@@ -564,19 +609,21 @@ export class WebDAVServer {
    * 构建PROPFIND响应
    */
   private buildPropfindResponse(href: string, fileInfo: FileInfo): WebDAVResponse {
+    const prop: Record<string, string> = {
+      'displayname': fileInfo.name,
+      'getcontentlength': fileInfo.size.toString(),
+      'getlastmodified': new Date(fileInfo.lastModified).toUTCString(),
+      'creationdate': new Date(fileInfo.createdTime).toUTCString(),
+      'resourcetype': fileInfo.isDirectory ? '<D:collection/>' : '',
+      'getcontenttype': fileInfo.mimeType || 'application/octet-stream'
+    };
+    const propstat: PropStat = {
+      status: 'HTTP/1.1 200 OK',
+      prop: prop
+    };
     const response: WebDAVResponse = {
       href: href,
-      propstat: {
-        status: 'HTTP/1.1 200 OK',
-        prop: {
-          'displayname': fileInfo.name,
-          'getcontentlength': fileInfo.size.toString(),
-          'getlastmodified': new Date(fileInfo.lastModified).toUTCString(),
-          'creationdate': new Date(fileInfo.createdTime).toUTCString(),
-          'resourcetype': fileInfo.isDirectory ? '<D:collection/>' : '',
-          'getcontenttype': fileInfo.mimeType || 'application/octet-stream'
-        }
-      }
+      propstat: propstat
     };
     return response;
   }
@@ -588,7 +635,8 @@ export class WebDAVServer {
     console.log('\n[WebDAV] 挂载点:');
     console.log('='.repeat(60));
     
-    for (const [_, mapping] of this.pathMappings) {
+    for (const entry of this.pathMappings) {
+      const mapping = entry[1];
       console.log(`  ${mapping.virtualPath} -> ${mapping.realPath}`);
     }
     
@@ -599,13 +647,37 @@ export class WebDAVServer {
 }
 
 /**
+ * 路径解析结果
+ */
+interface ResolvePathResult {
+  virtualPath: string;
+  realPath: string;
+  mapping: PathMapping | null;
+}
+
+/**
+ * 目录列表项
+ */
+interface DirListItem {
+  name: string;
+  isDirectory: boolean;
+  size: number;
+  lastModified: number;
+}
+
+/**
+ * PropStat接口
+ */
+interface PropStat {
+  status: string;
+  prop: Record<string, string>;
+}
+
+/**
  * WebDAV响应接口
  */
 interface WebDAVResponse {
   href: string;
-  propstat?: {
-    status: string;
-    prop: Record<string, string>;
-  };
+  propstat?: PropStat;
   status?: string;
 }
