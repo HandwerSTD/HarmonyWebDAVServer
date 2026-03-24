@@ -28,3 +28,9 @@ export * from './middleware/index';
 export { StatusCode } from './StatusCode';
 
 export { Utils } from './Utils';
+
+// 导出WebDAV模块
+export { WebDAVServer } from './webdav/WebDAVServer';
+export type { WebDAVServerOptions, PathMapping } from './webdav/WebDAVServer';
+export { FileSystemAdapter } from './webdav/FileSystemAdapter';
+export type { FileInfo } from './webdav/FileSystemAdapter';
