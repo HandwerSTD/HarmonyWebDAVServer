@@ -132,7 +132,7 @@ export class WebDAVServer {
     this.server.cors({
       origin: '*',
       methods: ['GET','POST','PUT','DELETE','OPTIONS','HEAD','MKCOL','PROPFIND','PROPPATCH','COPY','MOVE','LOCK','UNLOCK'],
-      allowedHeaders: ['Content-Type','Authorization','Depth','Destination','Overwrite','If','Lock-Token'],
+      allowedHeaders: ['Content-Type','Authorization','Depth','Destination','Overwrite','If','Lock-Token','Range'],
     });
   }
 

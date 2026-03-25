@@ -8,6 +8,7 @@
 import { common } from '@kit.AbilityKit';
 import { WebDAVExample } from './WebDAVExample';
 import { socket } from '@kit.NetworkKit';
+import { http } from '@kit.NetworkKit';
 
 /**
  * WebDAV页面构建器（用于路由注册）
@@ -29,9 +30,12 @@ struct WebDAVPage {
   @State port: number = 8080;
   @State isRunning: boolean = false;
   @State mountPoints: string[] = [];
+  @State testResult: string = '';
+  @State isTesting: boolean = false;
   
   private context: common.UIAbilityContext | null = null;
   private webdavExample: WebDAVExample | null = null;
+  private httpRequest: http.HttpRequest | null = null;
 
   /**
    * 页面即将显示
@@ -63,6 +67,9 @@ struct WebDAVPage {
           
           // 测试说明
           this.buildTestInstructions();
+          
+          // 测试按钮区域
+          this.buildTestButtons();
         }
         .width('100%')
         .padding(16)
@@ -470,6 +477,326 @@ struct WebDAVPage {
       this.mountPoints = [];
     } catch (error) {
       console.error('停止服务器失败:', error);
+    }
+  }
+
+  /**
+   * 构建测试按钮区域
+   */
+  @Builder
+  buildTestButtons() {
+    Column({ space: 12 }) {
+      Text('功能测试')
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .width('100%');
+
+      // 测试按钮行
+      Row({ space: 12 }) {
+        // OPTIONS 测试按钮
+        Button('测试 OPTIONS')
+          .width('45%')
+          .height(40)
+          .backgroundColor('#2196F3')
+          .enabled(this.isRunning && !this.isTesting)
+          .onClick(() => {
+            this.testOptionsRequest();
+          });
+
+        // PROPFIND 测试按钮
+        Button('测试 PROPFIND')
+          .width('45%')
+          .height(40)
+          .backgroundColor('#4CAF50')
+          .enabled(this.isRunning && !this.isTesting)
+          .onClick(() => {
+            this.testPropfindRequest();
+          });
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center);
+
+      // 更多测试按钮
+      Row({ space: 12 }) {
+        // GET 测试按钮
+        Button('测试 GET')
+          .width('45%')
+          .height(40)
+          .backgroundColor('#FF9800')
+          .enabled(this.isRunning && !this.isTesting)
+          .onClick(() => {
+            this.testGetRequest();
+          });
+
+        // MKCOL 测试按钮
+        Button('测试 MKCOL')
+          .width('45%')
+          .height(40)
+          .backgroundColor('#9C27B0')
+          .enabled(this.isRunning && !this.isTesting)
+          .onClick(() => {
+            this.testMkcolRequest();
+          });
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center);
+
+      // 测试结果显示
+      if (this.testResult) {
+        Column({ space: 8 }) {
+          Row({ space: 8 }) {
+            Text('测试结果:')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold);
+            
+            Blank();
+            
+            Button('清空')
+              .fontSize(12)
+              .height(24)
+              .backgroundColor('#757575')
+              .onClick(() => {
+                this.testResult = '';
+              });
+          }
+          .width('100%');
+
+          Scroll() {
+            Text(this.testResult)
+              .fontSize(12)
+              .fontColor('#333333')
+              .width('100%');
+          }
+          .width('100%')
+          .height(200)
+          .backgroundColor('#F5F5F5')
+          .borderRadius(4)
+          .padding(8);
+        }
+        .width('100%')
+        .padding(8)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(4);
+      }
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundColor('#FFFFFF')
+    .borderRadius(8);
+  }
+
+  /**
+   * 测试 OPTIONS 请求
+   */
+  private async testOptionsRequest(): Promise<void> {
+    if (!this.isRunning) {
+      this.testResult = '错误: 服务器未启动';
+      return;
+    }
+
+    this.isTesting = true;
+    this.testResult = '正在发送 OPTIONS 请求...\n';
+
+    try {
+      this.httpRequest = http.createHttp();
+      
+      const url = `http://127.0.0.1:${this.port}/photos`;
+      
+      const response = await this.httpRequest.request(url, {
+        method: http.RequestMethod.OPTIONS,
+        header: {
+          'Content-Type': 'application/xml'
+        }
+      });
+
+      this.testResult += `请求URL: ${url}\n`;
+      this.testResult += `状态码: ${response.responseCode}\n`;
+      this.testResult += `响应头:\n`;
+      
+      if (response.header) {
+        const headers = response.header as Record<string, string>;
+        Object.keys(headers).forEach((key: string) => {
+          this.testResult += `  ${key}: ${headers[key]}\n`;
+        });
+      }
+      
+      this.testResult += `\n✅ OPTIONS 请求成功`;
+    } catch (error) {
+      this.testResult += `\n❌ OPTIONS 请求失败: ${JSON.stringify(error)}`;
+    } finally {
+      if (this.httpRequest) {
+        this.httpRequest.destroy();
+        this.httpRequest = null;
+      }
+      this.isTesting = false;
+    }
+  }
+
+  /**
+   * 测试 PROPFIND 请求
+   */
+  private async testPropfindRequest(): Promise<void> {
+    if (!this.isRunning) {
+      this.testResult = '错误: 服务器未启动';
+      return;
+    }
+
+    this.isTesting = true;
+    this.testResult = '正在发送 PROPFIND 请求...\n';
+
+    try {
+      this.httpRequest = http.createHttp();
+      
+      const url = `http://127.0.0.1:${this.port}/photos`;
+      
+      // PROPFIND 请求体
+      const propfindXml = `<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:">
+  <allprop/>
+</propfind>`;
+      
+      const response = await this.httpRequest.request(url, {
+        method: 'PROPFIND' as http.RequestMethod,
+        header: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Depth': '1'
+        },
+        extraData: propfindXml
+      });
+
+      this.testResult += `请求URL: ${url}\n`;
+      this.testResult += `请求方法: PROPFIND\n`;
+      this.testResult += `请求头: Depth: 1\n`;
+      this.testResult += `状态码: ${response.responseCode}\n`;
+      this.testResult += `\n响应头:\n`;
+      
+      if (response.header) {
+        const headers = response.header as Record<string, string>;
+        Object.keys(headers).forEach((key: string) => {
+          this.testResult += `  ${key}: ${headers[key]}\n`;
+        });
+      }
+      
+      this.testResult += `\n响应体:\n`;
+      if (response.result) {
+        this.testResult += `${response.result}\n`;
+      }
+      
+      this.testResult += `\n✅ PROPFIND 请求成功`;
+    } catch (error) {
+      this.testResult += `\n❌ PROPFIND 请求失败: ${JSON.stringify(error)}`;
+    } finally {
+      if (this.httpRequest) {
+        this.httpRequest.destroy();
+        this.httpRequest = null;
+      }
+      this.isTesting = false;
+    }
+  }
+
+  /**
+   * 测试 GET 请求
+   */
+  private async testGetRequest(): Promise<void> {
+    if (!this.isRunning) {
+      this.testResult = '错误: 服务器未启动';
+      return;
+    }
+
+    this.isTesting = true;
+    this.testResult = '正在发送 GET 请求...\n';
+
+    try {
+      this.httpRequest = http.createHttp();
+      
+      const url = `http://127.0.0.1:${this.port}/photos`;
+      
+      const response = await this.httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: {
+          'Accept': 'application/json'
+        }
+      });
+
+      this.testResult += `请求URL: ${url}\n`;
+      this.testResult += `状态码: ${response.responseCode}\n`;
+      this.testResult += `\n响应头:\n`;
+      
+      if (response.header) {
+        const headers = response.header as Record<string, string>;
+        Object.keys(headers).forEach((key: string) => {
+          this.testResult += `  ${key}: ${headers[key]}\n`;
+        });
+      }
+      
+      this.testResult += `\n响应体:\n`;
+      if (response.result) {
+        this.testResult += `${response.result}\n`;
+      }
+      
+      this.testResult += `\n✅ GET 请求成功`;
+    } catch (error) {
+      this.testResult += `\n❌ GET 请求失败: ${JSON.stringify(error)}`;
+    } finally {
+      if (this.httpRequest) {
+        this.httpRequest.destroy();
+        this.httpRequest = null;
+      }
+      this.isTesting = false;
+    }
+  }
+
+  /**
+   * 测试 MKCOL 请求
+   */
+  private async testMkcolRequest(): Promise<void> {
+    if (!this.isRunning) {
+      this.testResult = '错误: 服务器未启动';
+      return;
+    }
+
+    this.isTesting = true;
+    this.testResult = '正在发送 MKCOL 请求...\n';
+
+    try {
+      this.httpRequest = http.createHttp();
+      
+      const url = `http://127.0.0.1:${this.port}/photos/test-dir`;
+      
+      const response = await this.httpRequest.request(url, {
+        method: 'MKCOL' as http.RequestMethod,
+        header: {
+          'Content-Type': 'application/xml'
+        }
+      });
+
+      this.testResult += `请求URL: ${url}\n`;
+      this.testResult += `请求方法: MKCOL\n`;
+      this.testResult += `状态码: ${response.responseCode}\n`;
+      this.testResult += `\n响应头:\n`;
+      
+      if (response.header) {
+        const headers = response.header as Record<string, string>;
+        Object.keys(headers).forEach((key: string) => {
+          this.testResult += `  ${key}: ${headers[key]}\n`;
+        });
+      }
+      
+      if (response.responseCode === 201) {
+        this.testResult += `\n✅ MKCOL 请求成功 - 目录已创建`;
+      } else if (response.responseCode === 405) {
+        this.testResult += `\n⚠️ MKCOL 请求 - 目录已存在`;
+      } else {
+        this.testResult += `\n✅ MKCOL 请求完成`;
+      }
+    } catch (error) {
+      this.testResult += `\n❌ MKCOL 请求失败: ${JSON.stringify(error)}`;
+    } finally {
+      if (this.httpRequest) {
+        this.httpRequest.destroy();
+        this.httpRequest = null;
+      }
+      this.isTesting = false;
     }
   }
 }

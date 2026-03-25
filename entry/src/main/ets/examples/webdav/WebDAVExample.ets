@@ -8,6 +8,7 @@
 import { socket } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
 import { WebDAVServer } from '@cxy/webserver';
+import { fileIo } from '@kit.CoreFileKit';
 
 /**
  * WebDAV示例类
@@ -32,6 +33,11 @@ export class WebDAVExample {
       port: 8080,
       enableLogging: true
     });
+    try {
+      fileIo.mkdirSync(`${this.context?.filesDir}/albums`)
+      fileIo.mkdirSync(`${this.context?.filesDir}/docs`)
+      fileIo.mkdirSync(`${this.context?.filesDir}/music`)
+    } catch {}
 
     // 挂载目录
     this.dav.mount('/photos', `${this.context?.filesDir}/albums`);
