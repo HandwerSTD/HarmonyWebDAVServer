@@ -526,7 +526,6 @@ export class HttpServer {
     };
 
     clientSocket.on('message', async (data) => {
-      console.log('SOCKET_MSG: ' + util.TextDecoder.create().decodeToString(new Uint8Array(data.message)))
       try {
         // 第一时间将新数据追加到统一缓冲区
         ctx.buffer = Utils.mergeArrayBuffers(ctx.buffer, data.message);
@@ -754,65 +753,6 @@ export class HttpServer {
 
     const remaining = buffer.slice(lastChunkEnd);
     return { chunks, remaining, isComplete };
-  }
-
-  /**
-   * 解析分块传输数据
-   * @param buffer 缓冲区数据
-   * @returns 解析出的数据块和剩余数据
-   */
-  private parseChunkedData(buffer: ArrayBuffer): HttpChunkedData {
-    const chunks: ArrayBuffer[] = [];
-    const bufferStr = Utils.arrayBufferToStr(buffer);
-    let offset = 0;
-    let lastChunkEnd = 0;
-
-    while (offset < bufferStr.length) {
-      const crlfIndex = bufferStr.indexOf('\r\n', offset);
-      if (crlfIndex === -1) {
-        break;
-      }
-
-      const chunkSizeStr = bufferStr.substring(offset, crlfIndex);
-      const chunkSize = parseInt(chunkSizeStr, 16);
-
-      if (isNaN(chunkSize)) {
-        break;
-      }
-
-      if (chunkSize === 0) {
-        // 结束块
-        lastChunkEnd = crlfIndex + 2;
-        break;
-      }
-
-      const chunkStart = crlfIndex + 2;
-      const chunkEnd = chunkStart + chunkSize;
-
-      if (chunkEnd + 2 > bufferStr.length) {
-        // 数据不完整，等待更多数据
-        break;
-      }
-
-      const chunkData = buffer.slice(chunkStart, chunkEnd);
-      chunks.push(chunkData);
-
-      offset = chunkEnd + 2;
-      lastChunkEnd = offset;
-    }
-
-    const remaining = buffer.slice(lastChunkEnd);
-    return { chunks, remaining };
-  }
-
-  /**
-   * 检查分块传输是否完成
-   * @param buffer 缓冲区数据
-   * @returns 是否完成
-   */
-  private isChunkedComplete(buffer: ArrayBuffer): boolean {
-    const bufferStr = Utils.arrayBufferToStr(buffer);
-    return bufferStr.includes('0\r\n\r\n');
   }
 
   /**
