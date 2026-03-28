@@ -1,35 +1,49 @@
-![Version](https://img.shields.io/badge/version-2.0.2-blue)  ![License](https://img.shields.io/badge/License-Apache%202.0-green.svg) ![GitHub Stars](https://img.shields.io/github/stars/iHongRen/WebServer.svg?style=social)
+# @handwer/webdav-server
 
-# WebServer - 鸿蒙Web服务器框架
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.0.2-green.svg)](oh-package.json5)
+[![HarmonyOS](https://img.shields.io/badge/platform-HarmonyOS-orange.svg)](https://www.harmonyos.com/)
 
-这是一个基于 HarmonyOS 的轻量级Web服务器框架，提供了类似 Express.js 的 API 设计，支持路由、中间件、静态文件服务等功能。
+鸿蒙 Web 服务器框架，提供类 Express.js API，支持中间件、路由、静态文件服务、WebDAV 协议等完整功能。
 
-**🎉 本组件荣获[HarmonyOS组件开发征集活动](https://developer.huawei.com/consumer/cn/forum/topic/0204206012800831358?fid=0102767778349500527) 质量奖第一名**
+## 目录
+
+- [特性](#特性)
+- [安装](#安装)
+- [快速开始](#快速开始)
+- [API 文档](#api-文档)
+  - [核心类](#核心类)
+  - [中间件](#中间件)
+  - [类型定义](#类型定义)
+- [示例](#示例)
+- [许可证](#许可证)
+
+---
 
 ## 特性
 
-- 类 Express.js 的 API 设计
-- 支持 https
-- 支持路由参数和查询字符串
-- CORS 跨域支持
-- 静态文件服务
-- 文件上传支持
-- 流式传输支持（响应流和请求流）
-- 分块传输编码（Transfer-Encoding: chunked）
-- 缓存控制
-- 错误处理
-- 中间件系统
-- 多种日志格式支持
+- **完整的 HTTP/HTTPS 服务器** - 支持 HTTP 和 HTTPS（TLS）协议
+- **类 Express.js API** - 熟悉的路由和中间件模式
+- **路由系统** - 支持参数路由、动态路由管理
+- **中间件支持** - 内置多种中间件，支持自定义中间件
+- **请求体解析** - 支持 JSON、URL编码、multipart、text/plain 等格式
+- **静态文件服务** - 支持缓存、ETag、Range 请求（断点续传）
+- **CORS 跨域** - 完整的跨域资源共享支持
+- **日志记录** - 多种日志格式（dev、combined、common、short、tiny）
+- **文件上传** - 支持 multipart/form-data 和流式上传
+- **流式传输** - 支持分块传输编码（Chunked Transfer Encoding）
+- **WebDAV 协议** - 完整的 WebDAV 服务器实现
+- **事件系统** - 服务器生命周期和请求事件监听
+- **TypeScript 支持** - 完整的类型定义
+
+---
 
 ## 安装
 
-```sh
-ohpm install @handwer/webdav-server
-```
+在您的 HarmonyOS 项目中安装：
 
-或在`oh-package.json5` 添加依赖，然后同步
-
-```json
+```typescript
+// oh-package.json5
 {
   "dependencies": {
     "@handwer/webdav-server": "^2.0.2"
@@ -37,620 +51,1084 @@ ohpm install @handwer/webdav-server
 }
 ```
 
+---
 
 ## 快速开始
 
-```typescript
-import { HttpServer } from '@handwer/webdav-server';
+### 基础 HTTP 服务器
 
+```typescript
+import { HttpServer, HttpRequest, HttpResponse } from '@handwer/webdav-server';
+
+// 创建服务器
 const server = new HttpServer();
 
-// 注册 GET / 接口
-server.get('/', (req, res, next) => {
-  res.status(200).json({
-    message: '欢迎使用 WebServer'
-  })
-})
+// 启用日志和 CORS
+server.logger();
+server.cors();
 
-// 在8080端口 启动服务器
-server.startServer(8080).then((info) => {
-  console.log(`http://${info.address}:${info.port}`)
-})
+// 启用请求体自动解析
+server.auto();
 
-// 访问：http://设备的ip:8080/   
+// 定义路由
+server.get('/', async (req: HttpRequest, res: HttpResponse) => {
+  res.json({ message: 'Hello World' });
+});
+
+server.get('/users/:id', async (req: HttpRequest, res: HttpResponse) => {
+  const userId = req.params['id'];
+  res.json({ userId });
+});
+
+server.post('/api/data', async (req: HttpRequest, res: HttpResponse) => {
+  // req.body 已自动解析
+  res.json({ received: req.body });
+});
+
+// 启动服务器
+const info = await server.startServer(8080);
+console.log(`Server running at http://${info.address}:${info.port}`);
 ```
 
-## 示例
-
-完整的代码示例请查看 [demo](https://github.com/iHongRen/WebServer/blob/main/entry/src/main/ets/pages/Index.ets)
+### HTTPS 服务器
 
 ```typescript
-import { HttpServer } from '@handwer/webdav-server';
+import { TLSServer, CertManager } from '@handwer/webdav-server';
 
-// 初始化服务器
-initServer()
-{
-  this.server = new HttpServer();
+// 加载证书
+const tlsOptions = await CertManager.loadFromFiles(
+  '/path/to/private.key',
+  '/path/to/certificate.crt'
+);
 
-  // --- 1. 中间件注册 ---
-  // 顺序很重要，通常日志和CORS最先，然后是请求体解析，再是静态文件和路由
-  this.server.logger({
-    stream: (log: string) => {
-      console.log(log) //自定义写入日志文件
-    }
-  }) //日志记录
-  this.server.cors(); //支持跨域
+// 创建 HTTPS 服务器
+const server = new TLSServer(tlsOptions);
 
-  this.server.auto(); //自动解析
-  // this.server.json(); // 解析 application/json
-  // this.server.urlencoded(); // 解析 application/x-www-form-urlencoded
-  // this.server.multipart(); // 解析 multipart/form-data (用于文件上传)
-  // this.server.plain(); // 解析文本
+// 配置路由...
+server.get('/', async (req, res) => {
+  res.json({ secure: true });
+});
 
-  this.server.serveStatic(this.staticFilesRoot); // 提供静态文件服务
+// 启动服务器
+const info = await server.startServer(8443);
+console.log(`HTTPS Server running at https://${info.address}:${info.port}`);
+```
 
-  // --- 2. 模拟数据 ---
-  const users: User[] = [
-    { id: 1, name: 'cxy' },
-    { id: 2, name: 'ihongren' },
-    { id: 3, name: '仙银' }
-  ];
-  let nextUserId = 4;
+### WebDAV 服务器
 
+```typescript
+import { WebDAVServer } from '@handwer/webdav-server';
 
-  // --- 3. API 示例 ---
-  // GET /api/users - 获取所有用户
-  // curl http://192.168.2.38:8080/api/users
-  this.server.get('/api/users', (req, res) => {
-    res.json(users);
-  });
+// 创建 WebDAV 服务器
+const webdav = new WebDAVServer({
+  port: 8080,
+  enableLogging: true
+});
 
-  // GET /api/users/:id - 使用路由参数，获取单个用户
-  // curl http://192.168.2.38:8080/api/users/1
-  this.server.get('/api/users/:id', (req, res) => {
-    const user = users.find(u => u.id === parseInt(req.params.id));
-    if (user) {
-      res.json(user);
-    } else {
-      res.status(404).json({ error: 'User not found' });
-    }
-  });
+// 挂载虚拟路径到物理路径
+webdav.mount('/documents', '/data/storage/documents');
+webdav.mount('/photos', '/data/storage/photos');
 
-  // POST /api/users - 创建新用户
-  // curl -X POST -H "Content-Type: application/json" -d '{"name":"NewUser"}' http://192.168.2.38:8080/api/users
-  this.server.post('/api/users', (req, res) => {
-    const newUser: User = {
-      id: nextUserId++,
-      name: (req.body as Record<string, string>).name || 'Unnamed'
-    };
-    users.push(newUser);
-    console.log('Created new user:', JSON.stringify(newUser));
-    res.status(201).json(newUser);
-  });
+// 启动服务器
+await webdav.start();
+```
 
-  // post /api/users/:id - 更新用户
-  // curl -X POST -H "Content-Type: application/json" -d '{"name":"UpdatedUser"}' http://192.168.2.38:8080/api/users/1
-  this.server.post('/api/users/:id', (req, res) => {
-    const userId = parseInt(req.params.id);
-    const userIndex = users.findIndex(u => u.id === userId);
-    if (userIndex !== -1) {
-      users[userIndex].name = (req.body as Record<string, string>).name || users[userIndex].name;
-      res.json(users[userIndex]);
-    } else {
-      res.status(404).json({ error: 'User not found' });
-    }
-  });
+---
 
-  // --- 4. 文件上传路由 ---
-  // curl -X POST -F "uploadFile=@/path/to/your/file.txt" http://192.168.2.38:8080/api/upload
-  this.server.post('/api/upload', async (req, res, next) => {
-    try {
-      const uploadedFile = req.files?.uploadFile; // 'uploadFile' 对应 HTML form 中的 input name
-      if (!uploadedFile) {
-        return res.status(400).json({ error: 'No file uploaded.' });
-      }
+## API 文档
 
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const tempPath = `${context.filesDir}/${uploadedFile.fileName}`;
-      const f = await fileIo.open(tempPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE)
-      await fileIo.write(f.fd, uploadedFile.data);
+### 核心类
 
-      console.log(`File uploaded successfully: ${uploadedFile.fileName}`);
-      res.json({
-        message: 'File uploaded successfully!',
-        filename: uploadedFile.fileName,
-        size: uploadedFile.data.byteLength,
-        contentType: uploadedFile.contentType,
-        savedTo: tempPath
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
+#### HttpServer
 
-  // --- 5. 其他高级示例 ---
-  // 路由参数示例
-  // curl http://192.168.2.38:8080/api/users/123/books/456
-  this.server.get('/api/users/:userId/books/:bookId', (req, res) => {
-    res.json({
-      message: `You requested book ${req.params.bookId} for user ${req.params.userId}.`
-    });
-  });
+HTTP 服务器主类，提供完整的 HTTP 服务功能。
 
-  // 获取自定义请求头示例
-  // curl -H "X-Custom-Request-Header: MyValue" http://192.168.2.38:8080/api/custom-request-header
-  this.server.get('/api/custom-request-header', (req, res) => {
-    const customHeader = req.get('x-custom-request-header');
-    res.json({
-      message: 'Received custom request header',
-      headerValue: customHeader || 'Not found'
-    });
-  });
+**构造函数**
 
-  // 自定义响应头示例
-  // curl -i http://192.168.2.38:8080/api/custom-header
-  this.server.get('/api/custom-header', (req, res) => {
-    res.setHeader('X-Custom-Header', 'Hello from WebServer!');
-    res.json({ message: 'Check the response headers!' });
-  });
+```typescript
+constructor()
+```
 
-  // 错误触发示例
-  // curl http://192.168.2.38:8080/crash
-  this.server.get('/crash', (req, res, next) => {
-    // 故意抛出一个错误来测试错误处理中间件
-    throw new Error('This is a simulated crash!');
-  });
+创建一个新的 HTTP 服务器实例，自动设置默认 404 处理。
 
+**配置方法**
 
-  // --- 6. 统一错误处理中间件 (必须在路由之后注册) ---
-  const customErrorHandler: ErrorHandler = (error, req, res, next) => {
-    console.error(`[WebServer Error] Path: ${req.path}, Message: ${error.message}`);
-    if (res.isHeadersSent()) {
-      return next(error); // 如果头已发送，则委托给默认错误处理器
-    }
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: error.message || 'An unknown error occurred.'
-    });
-  };
-  this.server.use(customErrorHandler);
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `setConfig(key, value)` | `key: string, value: Object` | `void` | 设置配置项 |
+| `getConfig(key)` | `key: string` | `Object \| undefined` | 获取配置项 |
+
+**路由方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `use(handler)` | `RequestHandler \| ErrorHandler` | `void` | 注册中间件或错误处理中间件 |
+| `get(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 GET 路由 |
+| `post(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 POST 路由 |
+| `put(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 PUT 路由 |
+| `delete(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 DELETE 路由 |
+| `patch(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 PATCH 路由 |
+| `head(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 HEAD 路由 |
+| `options(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 OPTIONS 路由 |
+| `propfind(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 PROPFIND 路由（WebDAV） |
+| `copy(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 COPY 路由（WebDAV） |
+| `move(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 MOVE 路由（WebDAV） |
+| `mkcol(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 MKCOL 路由（WebDAV） |
+| `lock(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 LOCK 路由（WebDAV） |
+| `unlock(path, handler)` | `path: string, handler: RequestHandler` | `void` | 注册 UNLOCK 路由（WebDAV） |
+
+**中间件快捷方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `auto()` | - | `void` | 启用自动请求体解析 |
+| `json()` | - | `void` | 启用 JSON 请求体解析 |
+| `urlencoded()` | - | `void` | 启用 URL 编码请求体解析 |
+| `multipart()` | - | `void` | 启用 multipart 表单解析 |
+| `plain()` | - | `void` | 启用文本请求体解析 |
+| `serveStatic(directoryPath, options?)` | `directoryPath: string, options?: CacheOptions` | `void` | 启用静态文件服务 |
+| `cors(options?)` | `options?: CorsOptions` | `void` | 启用 CORS 跨域支持 |
+| `logger(options?)` | `options?: LoggerOptions` | `void` | 启用日志中间件 |
+
+**事件监听方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `onError(listener)` | `listener: ErrorEventListener` | `void` | 监听服务器错误事件 |
+| `on(eventType, listener)` | `eventType: ServerEventType, listener: ServerEventListener` | `void` | 监听服务器事件 |
+| `removeErrorListener(listener)` | `listener: ErrorEventListener` | `void` | 移除错误监听器 |
+| `removeListener(eventType, listener)` | `eventType: ServerEventType, listener: ServerEventListener` | `void` | 移除事件监听器 |
+| `removeAllListeners()` | - | `void` | 清除所有事件监听器 |
+
+**服务器控制方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `startServer(port, address?)` | `port: number, address?: string` | `Promise<socket.NetAddress>` | 启动服务器 |
+| `stopServer()` | - | `Promise<void>` | 停止服务器 |
+| `getState()` | - | `Promise<socket.SocketStateBase \| undefined>` | 获取服务器运行状态 |
+
+**客户端管理方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `getClientCount()` | - | `number` | 获取当前连接的客户端数量 |
+| `getClients()` | - | `(TCPSocketConnection \| TLSSocketConnection)[]` | 获取所有客户端信息 |
+| `getClient(clientId)` | `clientId: number` | `TCPSocketConnection \| TLSSocketConnection \| undefined` | 根据 ID 获取客户端信息 |
+| `disconnectClient(clientId)` | `clientId: number` | `Promise<boolean>` | 断开指定客户端连接 |
+
+**示例**
+
+```typescript
+const server = new HttpServer();
+
+// 配置
+server.setConfig('maxConnections', 100);
+
+// 中间件
+server.logger({ format: 'dev' });
+server.cors({ origin: '*' });
+server.auto();
+
+// 路由
+server.get('/api/users', async (req, res) => {
+  res.json({ users: [] });
+});
+
+server.post('/api/users', async (req, res) => {
+  const user = req.body;
+  res.status(201).json({ created: user });
+});
+
+server.get('/api/users/:id', async (req, res) => {
+  const id = req.params['id'];
+  res.json({ id, name: 'User ' + id });
+});
+
+// 错误处理
+server.use((err: Error, req: HttpRequest, res: HttpResponse, next: NextFunction) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: err.message });
+});
+
+// 事件监听
+server.onError((error) => {
+  console.error('Server error:', error);
+});
+
+server.on(ServerEventType.REQUEST_RECEIVED, (event) => {
+  console.log('Request received:', event.data);
+});
+
+// 启动
+const info = await server.startServer(8080);
+```
+
+---
+
+#### TLSServer
+
+HTTPS 服务器类，继承自 HttpServer，提供 TLS 加密的 HTTP 服务。
+
+**构造函数**
+
+```typescript
+constructor(options: socket.TLSSecureOptions)
+```
+
+**参数**
+- `options` - TLS 配置选项，包含证书和私钥
+
+**示例**
+
+```typescript
+import { TLSServer, CertManager } from '@handwer/webdav-server';
+
+// 方式一：从文件加载证书
+const tlsOptions = await CertManager.loadFromFiles(
+  '/path/to/private.key',
+  '/path/to/certificate.crt',
+  '/path/to/ca.crt' // 可选
+);
+
+// 方式二：直接配置
+const tlsOptions: socket.TLSSecureOptions = {
+  key: '-----BEGIN PRIVATE KEY-----\n...',
+  cert: '-----BEGIN CERTIFICATE-----\n...',
+  ca: '-----BEGIN CERTIFICATE-----\n...' // 可选
+};
+
+const server = new TLSServer(tlsOptions);
+
+// 其他配置同 HttpServer
+server.get('/', async (req, res) => {
+  res.json({ secure: true });
+});
+
+const info = await server.startServer(8443);
+```
+
+---
+
+#### CertManager
+
+SSL 证书管理工具类。
+
+**静态方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `loadFromFiles(keyPath, certPath, caPath?)` | `keyPath: string, certPath: string, caPath?: string` | `Promise<socket.TLSSecureOptions>` | 从文件加载证书配置 |
+| `validateConfig(options)` | `options: socket.TLSSecureOptions` | `boolean` | 验证证书配置 |
+
+**示例**
+
+```typescript
+import { CertManager } from '@handwer/webdav-server';
+
+// 加载证书
+const tlsOptions = await CertManager.loadFromFiles(
+  '/data/ssl/private.key',
+  '/data/ssl/certificate.crt'
+);
+
+// 验证证书
+if (CertManager.validateConfig(tlsOptions)) {
+  console.log('Certificate is valid');
 }
+```
 
+---
 
-//启动服务器
-const info = await this.server.startServer(8080);
-if (info.address) {
-  console.log(`http://${info.address}:${info.port}`)
-} else {
-  console.error("启动失败，未获取到地址");
+#### HttpRequest
+
+HTTP 请求类，用于解析和处理 HTTP 请求数据。
+
+**属性**
+
+| 属性 | 类型 | 描述 |
+|------|------|------|
+| `method` | `string` | HTTP 请求方法（GET、POST 等） |
+| `path` | `string` | 请求路径（不包含查询字符串） |
+| `url` | `string` | 完整的 URL 路径（包含查询字符串） |
+| `version` | `string` | HTTP 版本 |
+| `ip` | `string` | 客户端 IP 地址 |
+| `headers` | `Map<string, string>` | 请求头集合 |
+| `body` | `ESObject` | 解析后的请求体数据 |
+| `query` | `Map<string, string>` | 查询字符串参数 |
+| `params` | `Record<string, string>` | 路由参数 |
+| `files` | `Record<string, File \| UploadedFile>` | 上传的文件 |
+| `userAgent` | `string` | User-Agent（getter） |
+| `referer` | `string` | Referer（getter） |
+| `contentLength` | `number` | Content-Length（getter） |
+
+**方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `get(headerName)` | `headerName: string` | `string \| undefined` | 获取请求头 |
+| `is(type)` | `type: string` | `boolean` | 检查是否为指定的 Content-Type |
+| `parseBody()` | - | `void` | 解析请求体数据 |
+| `getRawBody()` | - | `ArrayBuffer` | 获取原始请求体数据 |
+
+**流式传输方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `enableStreaming()` | - | `HttpRequest` | 启用流式模式（支持链式调用） |
+| `isStreamingEnabled()` | - | `boolean` | 检查是否启用了流式模式 |
+| `onData(callback)` | `callback: DataCallback` | `void` | 注册数据回调 |
+| `onEnd(callback)` | `callback: EndCallback` | `void` | 注册结束回调 |
+| `onError(callback)` | `callback: ErrorCallback` | `void` | 注册错误回调 |
+| `getReceivedBytes()` | - | `number` | 获取已接收的字节数 |
+| `getExpectedBytes()` | - | `number` | 获取期望接收的总字节数 |
+| `isComplete()` | - | `boolean` | 检查是否接收完毕 |
+
+**示例**
+
+```typescript
+// 基本使用
+server.post('/api/data', async (req: HttpRequest, res: HttpResponse) => {
+  // 获取请求头
+  const contentType = req.get('content-type');
+  
+  // 检查 Content-Type
+  if (req.is('application/json')) {
+    // req.body 已自动解析为 JSON 对象
+    const data = req.body;
+    res.json({ received: data });
+  }
+  
+  // 获取查询参数
+  const page = req.query.get('page') || '1';
+  
+  // 获取路由参数
+  const id = req.params['id'];
+  
+  // 获取客户端 IP
+  const clientIp = req.ip;
+});
+
+// 流式上传
+server.put('/upload', async (req: HttpRequest, res: HttpResponse) => {
+  req.enableStreaming();
+  
+  const chunks: ArrayBuffer[] = [];
+  
+  req.onData((chunk: ArrayBuffer) => {
+    chunks.push(chunk);
+    console.log(`Received ${req.getReceivedBytes()}/${req.getExpectedBytes()} bytes`);
+  });
+  
+  req.onEnd(() => {
+    console.log('Upload complete');
+    res.status(201).send('OK');
+  });
+  
+  req.onError((error) => {
+    console.error('Upload error:', error);
+    res.status(500).send('Error');
+  });
+});
+```
+
+---
+
+#### HttpResponse
+
+HTTP 响应类，用于构建和发送 HTTP 响应。
+
+**方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `status(code)` | `code: number` | `HttpResponse` | 设置 HTTP 状态码（支持链式调用） |
+| `getStatusCode()` | - | `number` | 获取当前状态码 |
+| `setHeader(name, value)` | `name: string, value: string` | `HttpResponse` | 设置响应头（支持链式调用） |
+| `getHeader(name)` | `name: string` | `string \| undefined` | 获取响应头 |
+| `removeHeader(name)` | `name: string` | `HttpResponse` | 移除响应头（支持链式调用） |
+| `isHeadersSent()` | - | `boolean` | 检查响应头是否已发送 |
+| `isFinished()` | - | `boolean` | 检查响应是否已完成 |
+| `onFinish(callback)` | `callback: ResponseFinishCallback` | `void` | 添加响应完成回调 |
+
+**发送响应方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `send(body?)` | `body?: string \| ArrayBuffer` | `Promise<void>` | 发送响应数据 |
+| `json(data)` | `data: ESObject` | `Promise<void>` | 发送 JSON 响应 |
+| `xml(xmlString)` | `xmlString: string` | `Promise<void>` | 发送 XML 响应 |
+| `multiStatus(data)` | `data: ESObject` | `Promise<void>` | 发送 207 Multi-Status 响应（WebDAV） |
+| `multiJson(data)` | `data: ESObject` | `Promise<void>` | 发送 207 Multi-Status 响应（JSON 格式） |
+
+**流式传输方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `write(chunk, encoding?)` | `chunk: string \| ArrayBuffer, encoding?: string` | `Promise<boolean>` | 写入数据块 |
+| `end(chunk?, encoding?)` | `chunk?: string \| ArrayBuffer, encoding?: string` | `Promise<void>` | 结束响应 |
+
+**文件传输方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `sendFile(filePath, options?)` | `filePath: string, options?: SendFileOptions` | `Promise<void>` | 流式发送文件，支持 Range 请求 |
+| `setRequestHeaders(headers)` | `headers: Map<string, string>` | `void` | 设置请求头引用（用于 Range 请求） |
+
+**示例**
+
+```typescript
+// 发送各种响应
+server.get('/json', async (req, res) => {
+  res.json({ message: 'Hello' });
+});
+
+server.get('/status', async (req, res) => {
+  res.status(404).json({ error: 'Not Found' });
+});
+
+server.get('/headers', async (req, res) => {
+  res.setHeader('X-Custom-Header', 'value')
+     .setHeader('Cache-Control', 'no-cache')
+     .send('OK');
+});
+
+// 流式响应
+server.get('/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  
+  for (let i = 0; i < 10; i++) {
+    await res.write(`Line ${i}\n`);
+  }
+  
+  await res.end();
+});
+
+// 发送文件
+server.get('/download/:filename', async (req, res) => {
+  const filename = req.params['filename'];
+  res.setRequestHeaders(req.headers); // 支持 Range 请求
+  await res.sendFile(`/data/files/${filename}`);
+});
+
+// Server-Sent Events
+server.get('/sse', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  let id = 0;
+  const interval = setInterval(async () => {
+    await res.write(`data: ${JSON.stringify({ id, time: Date.now() })}\n\n`);
+    id++;
+  }, 1000);
+  
+  // 清理
+  res.onFinish(() => {
+    clearInterval(interval);
+  });
+});
+```
+
+---
+
+#### Router
+
+路由管理器类，负责路由的注册、匹配和执行。
+
+**方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `addRoute(method, path, handler)` | `method: string, path: string, handler: RequestHandler \| ErrorHandler` | `void` | 添加路由 |
+| `handle(req, res)` | `req: HttpRequest, res: HttpResponse` | `void` | 处理 HTTP 请求 |
+| `getRoutes()` | - | `Route[]` | 获取所有路由 |
+
+**Route 接口**
+
+```typescript
+interface Route {
+  method: string;           // HTTP 方法
+  path: string;             // 路由路径
+  handler: RequestHandler | ErrorHandler; // 处理函数
+  pathRegex: RegExp | null; // 路径正则表达式
+  paramNames: string[];     // 参数名列表
+}
+```
+
+**示例**
+
+```typescript
+import { Router, HttpRequest, HttpResponse, NextFunction } from '@handwer/webdav-server';
+
+const router = new Router();
+
+// 添加路由
+router.addRoute('GET', '/users', async (req, res, next) => {
+  res.json({ users: [] });
+});
+
+router.addRoute('GET', '/users/:id', async (req, res, next) => {
+  const id = req.params['id'];
+  res.json({ id });
+});
+
+// 查看所有路由
+const routes = router.getRoutes();
+routes.forEach(route => {
+  console.log(`${route.method} ${route.path}`);
+});
+```
+
+---
+
+#### WebDAVServer
+
+WebDAV 服务器类，提供高层级的 WebDAV 服务封装。
+
+**构造函数**
+
+```typescript
+constructor(options?: WebDAVServerOptions)
+```
+
+**WebDAVServerOptions 接口**
+
+```typescript
+interface WebDAVServerOptions {
+  port?: number;                    // 监听端口，默认 8080
+  host?: string;                    // 监听地址
+  enableAuth?: boolean;             // 是否启用身份验证
+  username?: string;                // 用户名
+  password?: string;                // 密码
+  enableLogging?: boolean;          // 是否启用日志，默认 true
+  logStream?: (message: string) => void;  // 自定义日志输出流
+  logFormat?: string;               // 日志格式
+}
+```
+
+**方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `mount(virtualPath, realPath)` | `virtualPath: string, realPath: string` | `void` | 挂载虚拟路径到物理路径 |
+| `start()` | - | `Promise<socket.NetAddress \| null>` | 启动服务器 |
+| `stop()` | - | `Promise<void>` | 停止服务器 |
+| `setLogStream(logStream)` | `logStream: (message: string) => void` | `void` | 设置自定义日志输出流 |
+| `getLogStream()` | - | `((message: string) => void) \| undefined` | 获取当前日志输出流 |
+
+**支持的 WebDAV 方法**
+
+- `OPTIONS` - 获取支持的方法
+- `PROPFIND` - 获取属性
+- `GET` - 下载文件
+- `HEAD` - 获取文件信息
+- `PUT` - 上传文件
+- `DELETE` - 删除文件/目录
+- `MKCOL` - 创建目录
+- `MOVE` - 移动文件/目录
+- `COPY` - 复制文件/目录
+
+**示例**
+
+```typescript
+import { WebDAVServer } from '@handwer/webdav-server';
+
+// 创建 WebDAV 服务器
+const webdav = new WebDAVServer({
+  port: 8080,
+  enableLogging: true,
+  logFormat: 'dev'
+});
+
+// 挂载路径
+webdav.mount('/documents', '/data/storage/documents');
+webdav.mount('/photos', '/data/media/photos');
+webdav.mount('/backup', '/data/backup');
+
+// 自定义日志输出
+webdav.setLogStream((message: string) => {
+  console.log(`[WebDAV] ${message}`);
+  // 也可以写入文件或发送到远程日志服务器
+});
+
+// 启动服务器
+const info = await webdav.start();
+if (info) {
+  console.log(`WebDAV server running at http://${info.address}:${info.port}`);
 }
 
 // 停止服务器
-await this.server.stopServer();
+await webdav.stop();
 ```
 
-## 运行 [demo](https://github.com/iHongRen/WebServer)
+---
 
-<table>
-<tr>
-<td valign="top" align="center">
-<img src="https://7up.pics/images/2026/03/02/webserver-demo.jpg" alt="webserver demo" border="0">
-</td>
-<td valign="top" align="center">
-<img src="https://7up.pics/images/2026/03/02/http.jpg" alt="http" border="0">
-</td>
-</tr>
-</table>
+#### ServerEventEmitter
 
-**浏览器访问：http://192.168.xx.xx:8080**
+服务器事件发射器类。
 
-<img src="https://7up.pics/images/2025/08/20/E4DAB553-8134-44F9-8C00-B97C1C2FEFC4.png" alt="E4DAB553 8134 44F9 8C00 B97C1C2FEFC4" border="0" style="display: inline-block;">
+**方法**
 
-## 完整示例
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `onError(listener)` | `listener: ErrorEventListener` | `void` | 监听错误事件 |
+| `on(eventType, listener)` | `eventType: ServerEventType, listener: ServerEventListener` | `void` | 监听服务器事件 |
+| `emitError(error, type)` | `error: Error, type: ServerErrorType` | `void` | 发射错误事件 |
+| `emit(event)` | `event: ServerEvent` | `void` | 发射服务器事件 |
+| `removeErrorListener(listener)` | `listener: ErrorEventListener` | `void` | 移除错误监听器 |
+| `removeListener(eventType, listener)` | `eventType: ServerEventType, listener: ServerEventListener` | `void` | 移除事件监听器 |
+| `removeAllListeners()` | - | `void` | 清除所有监听器 |
 
-查看 [examples/](https://github.com/iHongRen/WebServer/tree/main/entry/src/main/ets/examples) 目录获取更多示例：
+---
 
-- **HTTP服务器** - 完整的RESTful API和文件管理
+### 中间件
 
-- **HTTPS服务器** - SSL/TLS加密通信
+#### BodyParser
 
-- **Body Parser** - 各种请求体解析
+请求体解析中间件，提供各种格式的请求体解析。
 
-- **CORS** - 跨域资源共享
+**静态方法**
 
-- **Event** - 事件系统使用
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `json()` | - | `RequestHandler` | JSON 解析中间件 |
+| `urlencoded()` | - | `RequestHandler` | URL 编码解析中间件 |
+| `multipart()` | - | `RequestHandler` | multipart 表单解析中间件 |
+| `plain()` | - | `RequestHandler` | 文本解析中间件 |
+| `auto()` | - | `RequestHandler` | 通用解析中间件（自动检测 Content-Type） |
 
-- **Logger** - 日志记录
-
-- **Router** - 路由系统
-
-- **Static** - 静态文件服务
-
-- **Upload** - 分片上传最佳实践
-
-- **Stream** - 流式传输（服务器响应流）
-
-- **Stream Upload** - 流式上传（客户端请求流，支持Transfer-Encoding: chunked）
-
-# WebServer API [文档](https://github.com/iHongRen/WebServer)
-
-## 核心类
-
-### HttpServer 类
-
-Web服务器主类，提供HTTP服务器功能。
-
-#### 路由方法
-
-- `get(path: string, handler: RequestHandler)` - 注册GET路由
-- `post(path: string, handler: RequestHandler)` - 注册POST路由
-- `put(path: string, handler: RequestHandler)` - 注册PUT路由
-- `delete(path: string, handler: RequestHandler)` - 注册DELETE路由
-- `use(handler: RequestHandler | ErrorHandler)` - 注册中间件或错误处理器
-
-#### 中间件方法
-
-- `auto()` - 启用自动请求体解析（智能识别类型）
-- `json()` - 启用JSON请求体解析
-- `urlencoded()` - 启用URL编码请求体解析
-- `multipart()` - 启用多部分表单解析（文件上传）
-- `plain()` - 启用文本请求体解析
-- `serveStatic(directoryPath: string, options?: CacheOptions)` - 启用静态文件服务
-- `cors(options?: CorsOptions)` - 启用CORS跨域支持
-- `logger(options?: LoggerOptions)` - 启用日志中间件
-
-#### 服务器控制方法
-
-- `startServer(port: number, address: string = ''): Promise<socket.NetAddress>` - 启动服务器, 默认使用本机IP
-- `stopServer(): Promise<void>` - 停止服务器
-
-#### 事件监听方法
-
-- `onError(listener: ErrorEventListener): void` - 监听服务器错误事件
-- `on(eventType: ServerEventType, listener: ServerEventListener): void` - 监听服务器事件
-- `removeErrorListener(listener: ErrorEventListener): void` - 移除错误监听器
-- `removeListener(eventType: ServerEventType, listener: ServerEventListener): void` - 移除事件监听器
-- `removeAllListeners(): void` - 清除所有事件监听器
-
-#### 配置方法
-
-- `setConfig(key: string, value: Object)` - 设置配置项
-- `getConfig(key: string): Object | undefined` - 获取配置项
-
-------
-
-### TLSServer 类
-
-HTTPS服务器类，继承自HttpServer，提供TLS加密的HTTP服务。
-
-#### 构造函数
-
-- `constructor(options: socket.TLSSecureOptions)` - 创建HTTPS服务器实例
-
-#### 主要方法
-
-- 继承HttpServer的所有方法
-- `startServer(port: number, address: string = ''): Promise<socket.NetAddress>` - 启动HTTPS服务器，默认使用本机IP
-- `stopServer(): Promise<void>` - 停止HTTPS服务器
-
-------
-
-### HttpRequest 类
-
-HTTP请求解析类，包含请求的所有信息。
-
-#### 主要属性
-
-- `method: string` - HTTP请求方法（GET、POST等）
-- `path: string` - 请求路径（不包含查询字符串）
-- `url: string` - 完整URL路径（包含查询字符串）
-- `version: string` - HTTP版本
-- `ip: string` - 客户端IP地址
-- `headers: Map<string, string>` - 请求头集合
-- `body: ESObject` - 解析后的请求体数据（自动解码分块传输）
-- `query: Map<string, string>` - 查询字符串参数
-- `params: Record<string, string>` - 路由参数
-- `files: Record<string, File>` - 上传的文件
-
-#### 主要方法
-
-- `parseBody(): void` - 解析请求体数据（自动处理分块传输编码）
-- `getRawBody(): ArrayBuffer` - 获取原始请求体数据（已解码分块）
-- `get(headerName: string): string | undefined` - 获取请求头
-- `is(type: string): boolean` - 检查Content-Type
-
-#### 便捷属性
-
-- `get userAgent(): string` - 获取User-Agent
-- `get referer(): string` - 获取Referer
-- `get contentLength(): number` - 获取Content-Length
-
-#### 流式上传支持
-
-框架自动支持客户端使用 `Transfer-Encoding: chunked` 的流式上传：
+**示例**
 
 ```typescript
-// 服务器端自动处理分块传输
-server.post('/upload', (req, res) => {
-  // 检查是否使用了分块传输
-  const isChunked = req.get('transfer-encoding')?.includes('chunked');
-  
-  // 获取解码后的完整数据（框架自动解码分块）
-  const data = req.body;
-  const rawData = req.getRawBody();
-  
-  res.json({ 
-    success: true, 
-    isChunked: isChunked,
-    size: rawData.byteLength 
-  });
-});
+// 方式一：使用服务器快捷方法
+server.json();       // 只解析 JSON
+server.urlencoded(); // 只解析 URL 编码
+server.multipart();  // 只解析 multipart
+server.plain();      // 只解析纯文本
+server.auto();       // 自动检测并解析
+
+// 方式二：使用中间件
+import { BodyParser } from '@handwer/webdav-server';
+
+server.use(BodyParser.json());
+server.use(BodyParser.urlencoded());
 ```
 
-客户端使用curl测试：
-```bash
-curl -X POST http://IP:8080/upload \
-  -H "Transfer-Encoding: chunked" \
-  --data-binary @file.txt
-```
+---
 
-------
+#### Cors
 
-### HttpResponse 类
+CORS 跨域资源共享中间件。
 
-HTTP响应构建类，用于构建和发送响应。
+**静态方法**
 
-#### 主要方法
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `create(options?)` | `options?: CorsOptions` | `RequestHandler` | 创建 CORS 中间件 |
 
-- `status(code: number): HttpResponse` - 设置HTTP状态码（支持链式调用）
-- `setHeader(name: string, value: string): HttpResponse` - 设置响应头（支持链式调用）
-- `getHeader(name: string): string | undefined` - 获取响应头
-- `removeHeader(name: string): HttpResponse` - 移除响应头（支持链式调用）
-- `send(body?: string | ArrayBuffer): Promise<void>` - 发送响应数据（一次性发送）
-- `json(data: ESObject): Promise<void>` - 发送JSON响应
-- `write(chunk: string | ArrayBuffer, encoding?: string): Promise<boolean>` - 写入数据块（流式传输）
-- `end(chunk?: string | ArrayBuffer, encoding?: string): Promise<void>` - 结束响应（流式传输）
-- `isHeadersSent(): boolean` - 检查响应头是否已发送
-- `isFinished(): boolean` - 检查响应是否已完成
-- `getStatusCode(): number` - 获取当前状态码
-- `onFinish(callback: ResponseFinishCallback): void` - 添加响应完成回调
-
-#### 流式传输示例
-
-```typescript
-// 流式发送数据
-server.get('/stream', async (req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  
-  for (let i = 1; i <= 10; i++) {
-    await res.write(`数据块 ${i}\n`);
-    await sleep(500); // 模拟延迟
-  }
-  
-  await res.end('传输完成\n');
-});
-```
-
-------
-
-### Router 类
-
-路由管理器，负责路由的注册、匹配和执行。
-
-#### 主要方法
-
-- `addRoute(method: string, path: string, handler: RequestHandler | ErrorHandler)` - 添加路由
-- `handle(req: HttpRequest, res: HttpResponse)` - 处理HTTP请求
-- `getRoutes(): Route[]` - 获取所有路由
-
-------
-
-## 中间件
-
-### BodyParser 类
-
-请求体解析中间件，支持多种格式。
-
-- `static auto(): RequestHandler` - 自动解析中间件
-- `static json(): RequestHandler` - JSON解析中间件
-- `static urlencoded(): RequestHandler` - URL编码解析中间件
-- `static plain(): RequestHandler` - 纯文本解析中间件
-- `static multipart(): RequestHandler` - 多部分表单解析中间件（文件上传）
-
-### Cors 类
-
-CORS跨域资源共享中间件。
-
-- `static create(options?: CorsOptions): RequestHandler` - 创建CORS中间件
-
-**CorsOptions 配置项：**
+**CorsOptions 接口**
 
 ```typescript
 interface CorsOptions {
-	origin?: string | string[]; // 允许的源
-	methods?: string[]; // 允许的HTTP方法
-	allowedHeaders?: string[]; // 允许的请求头
+  methods?: string[];        // 允许的方法
+  origin?: string | string[]; // 允许的源地址
+  allowedHeaders?: string[]; // 允许的 header
 }
 ```
 
-### StaticFiles 类
+**示例**
+
+```typescript
+// 方式一：使用服务器快捷方法
+server.cors(); // 允许所有来源
+
+server.cors({
+  origin: 'https://example.com',
+  methods: ['GET', 'POST', 'PUT'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+});
+
+// 方式二：使用中间件
+import { Cors } from '@handwer/webdav-server';
+
+server.use(Cors.create({
+  origin: ['https://example.com', 'https://app.example.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Custom-Header']
+}));
+```
+
+---
+
+#### StaticFiles
 
 静态文件服务中间件。
 
-- `static serve(directoryPath: string, options?: CacheOptions): RequestHandler` - 创建静态文件服务中间件
+**静态方法**
 
-**CacheOptions 配置项：**
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `serve(directoryPath, options?)` | `directoryPath: string, options?: CacheOptions` | `RequestHandler` | 创建静态文件服务中间件 |
+
+**CacheOptions 接口**
 
 ```typescript
 interface CacheOptions {
-	maxAge?: number; // 缓存最大时间（秒）
+  maxAge?: number; // 缓存最大时间（秒），默认 3600
 }
 ```
 
-### Logger 类
+**示例**
 
-日志中间件，提供HTTP请求日志记录功能。
+```typescript
+// 方式一：使用服务器快捷方法
+server.serveStatic('/data/www');
 
-- `static create(options?: LoggerOptions): RequestHandler` - 创建自定义日志中间件
+server.serveStatic('/data/www', { maxAge: 86400 }); // 缓存 1 天
 
-**LoggerOptions 配置项：**
+// 方式二：使用中间件
+import { StaticFiles } from '@handwer/webdav-server';
+
+server.use(StaticFiles.serve('/data/www', { maxAge: 3600 }));
+```
+
+---
+
+#### Logger
+
+日志记录中间件。
+
+**静态方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `create(options?)` | `options?: LoggerOptions` | `RequestHandler` | 创建日志中间件 |
+| `dev()` | - | `RequestHandler` | 开发环境日志格式 |
+| `combined()` | - | `RequestHandler` | Apache combined 格式 |
+| `common()` | - | `RequestHandler` | Apache common 格式 |
+| `short()` | - | `RequestHandler` | 简短格式 |
+| `tiny()` | - | `RequestHandler` | 最简格式 |
+
+**LoggerOptions 接口**
 
 ```typescript
 interface LoggerOptions {
-	format?: 'dev' | 'combined' | 'common' | 'short' | 'tiny'; // 日志格式
-	stream?: (log: string) => void; // 自定义日志输出流
+  format?: LogFormat | string; // 日志格式
+  skip?: (req: HttpRequest, res: HttpResponse) => boolean; // 跳过条件
+  stream?: (message: string) => void; // 输出流
 }
 ```
 
-**日志格式说明：**
-
-- `dev` - 开发环境格式，带颜色标识
-- `combined` - Apache Combined Log Format（生产环境推荐）
-- `common` - Apache Common Log Format
-- `short` - 简短格式
-- `tiny` - 最简格式
-
-------
-
-## 工具类
-
-### Utils 类
-
-通用工具类，提供各种实用方法。
-
-- `static arrayBufferToStr(arr: ArrayBuffer): string` - ArrayBuffer转字符串
-- `static strToArrayBuffer(str: string): ArrayBuffer` - 字符串转ArrayBuffer
-- `static mergeArrayBuffers(buffer1: ArrayBuffer, buffer2: ArrayBuffer): ArrayBuffer` - 合并ArrayBuffer
-- `static getMimeType(filePath: string): string` - 获取MIME类型
-- `static normalizePath(path: string): string` - 规范化路径
-- `static joinPath(...paths: string[]): string` - 拼接路径
-- `static sanitizeFilename(filename: string): string` - 清理文件名
-
-------
-
-## 事件系统
-
-### ServerEventType 枚举
-
-服务器事件类型：
-
-- `SERVER_STARTED` - 服务器启动
-- `SERVER_STOPPED` - 服务器停止
-- `CLIENT_CONNECTED` - 客户端连接
-- `CLIENT_DISCONNECTED` - 客户端断开
-- `REQUEST_RECEIVED` - 收到请求
-- `RESPONSE_SENT` - 发送响应
-
-### ServerErrorType 枚举
-
-服务器错误类型：
-
-- `STARTUP_FAILED` - 启动失败
-- `LISTEN_ERROR` - 监听错误
-- `CONNECTION_ERROR` - 连接错误
-- `CLIENT_ERROR` - 客户端错误
-- `SOCKET_ERROR` - Socket错误
-- `UNKNOWN_ERROR` - 未知错误
-
-------
-
-
-
-## 类型定义
-
-### 函数类型
+**LogFormat 枚举**
 
 ```typescript
-/**
- * 下一步函数类型
- * 用于中间件链式调用
- */
-export type NextFunction = (error?: Error) => void;
+enum LogFormat {
+  COMBINED = 'combined', // Apache combined 格式
+  COMMON = 'common',     // Apache common 格式
+  DEV = 'dev',           // 开发环境格式
+  SHORT = 'short',       // 简短格式
+  TINY = 'tiny'          // 最简格式
+}
+```
 
-/**
- * 请求处理函数类型
- * 标准的中间件处理函数
- */
-export type RequestHandler = (req: HttpRequest, res: HttpResponse, next: NextFunction) => void;
+**示例**
 
-/**
- * 错误处理函数类型
- * 用于处理中间件中的错误
- */
-export type ErrorHandler = (error: Error, req: HttpRequest, res: HttpResponse, next: NextFunction) => void;
+```typescript
+// 方式一：使用服务器快捷方法
+server.logger(); // 默认 dev 格式
 
-/**
- * 响应完成回调函数类型
- */
-export type ResponseFinishCallback = (statusCode: number, responseSize: number) => void;
+server.logger({ format: 'combined' });
 
-/**
- * 事件监听器类型定义
- */
+server.logger({
+  format: 'dev',
+  skip: (req, res) => req.path.startsWith('/health'),
+  stream: (msg) => console.log(msg.trim())
+});
+
+// 方式二：使用中间件
+import { Logger, LogFormat } from '@handwer/webdav-server';
+
+server.use(Logger.dev());
+server.use(Logger.combined());
+server.use(Logger.create({
+  format: LogFormat.COMBINED,
+  stream: (msg) => {
+    // 写入文件或发送到远程日志服务器
+  }
+}));
+```
+
+---
+
+#### FileUpload
+
+文件上传中间件。
+
+**静态方法**
+
+| 方法 | 参数 | 返回值 | 描述 |
+|------|------|--------|------|
+| `create(options?)` | `options?: FileUploadOptions` | `RequestHandler` | 创建文件上传中间件 |
+
+**FileUploadOptions 接口**
+
+```typescript
+interface FileUploadOptions {
+  createParentPath?: boolean;  // 自动创建父目录，默认 false
+  uriDecodeFileNames?: boolean; // 解码文件名，默认 false
+  safeFileNames?: boolean;     // 安全文件名，默认 false
+  preserveExtension?: boolean; // 保留文件扩展名，默认 false
+  abortOnLimit?: boolean;      // 超过限制时中止，默认 false
+  useTempFiles?: boolean;      // 使用临时文件，默认 true
+  tempFileDir?: string;        // 临时文件目录，默认 '/tmp/uploads'
+  debug?: boolean;             // 调试模式，默认 false
+  limits?: FileLimits;         // 文件限制
+}
+```
+
+**FileLimits 接口**
+
+```typescript
+interface FileLimits {
+  fileSize?: number;   // 单个文件最大大小（字节），默认 50MB
+  files?: number;      // 最大文件数量，默认 10
+  fields?: number;     // 最大字段数量，默认 100
+  fieldSize?: number;  // 字段最大大小，默认 1MB
+}
+```
+
+**UploadedFile 接口**
+
+```typescript
+interface UploadedFile {
+  name: string;              // 原始文件名
+  data: ArrayBuffer;         // 文件数据
+  size: number;              // 文件大小
+  encoding: string;          // 编码
+  tempFilePath: string;      // 临时文件路径
+  truncated: boolean;        // 是否被截断
+  mimetype: string;          // MIME 类型
+  md5?: string;              // MD5 哈希
+  mv: (path: string) => Promise<void>; // 移动文件方法
+}
+```
+
+**示例**
+
+```typescript
+import { FileUpload } from '@handwer/webdav-server';
+
+// 使用文件上传中间件
+server.use(FileUpload.create({
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+    files: 5
+  },
+  useTempFiles: true,
+  tempFileDir: '/tmp/uploads',
+  createParentPath: true
+}));
+
+server.post('/upload', async (req, res) => {
+  // 获取上传的文件
+  const file = req.files['file'] as UploadedFile;
+  
+  if (file) {
+    console.log('File name:', file.name);
+    console.log('File size:', file.size);
+    console.log('MIME type:', file.mimetype);
+    
+    // 移动文件到目标位置
+    await file.mv('/data/uploads/' + file.name);
+    
+    res.json({
+      success: true,
+      filename: file.name,
+      size: file.size
+    });
+  } else {
+    res.status(400).json({ error: 'No file uploaded' });
+  }
+});
+```
+
+---
+
+### 类型定义
+
+#### 函数类型
+
+```typescript
+// 下一步函数类型
+type NextFunction = (error?: Error) => void;
+
+// 请求处理函数类型
+type RequestHandler = (req: HttpRequest, res: HttpResponse, next: NextFunction) => void;
+
+// 错误处理函数类型
+type ErrorHandler = (error: Error, req: HttpRequest, res: HttpResponse, next: NextFunction) => void;
+
+// 数据回调函数类型
+type DataCallback = (chunk: ArrayBuffer) => void;
+
+// 结束回调函数类型
+type EndCallback = () => void;
+
+// 错误回调函数类型
+type ErrorCallback = (error: BusinessError) => void;
+
+// 响应完成回调函数类型
+type ResponseFinishCallback = (statusCode: number, responseSize: number) => void;
+
+// 错误事件监听器类型
 type ErrorEventListener = (error: ServerError) => void;
+
+// 服务器事件监听器类型
 type ServerEventListener = (event: ServerEvent) => void;
 ```
 
-### 接口定义
+#### 接口定义
 
 ```typescript
 // 上传文件接口
 interface File {
-  fieldName: string; // 表单字段名
-  fileName: string; // 文件名
+  fieldName: string;   // 表单字段名
+  fileName: string;    // 文件名
   contentType: string; // 文件类型
-  data: ArrayBuffer; // 文件数据
+  data: ArrayBuffer;   // 文件数据
+  name?: string;       // 兼容 UploadedFile
+  size?: number;       // 兼容 UploadedFile
+  mimetype?: string;   // 兼容 UploadedFile
 }
 
-// 路由接口
-interface Route {
-  method: string; // HTTP方法
-  path: string; // 路由路径
-  handler: RequestHandler | ErrorHandler; // 处理函数
-  pathRegex: RegExp | null; // 路径正则表达式
-  paramNames: string[]; // 参数名列表
+// CORS 配置选项接口
+interface CorsOptions {
+  methods?: string[];         // 允许的方法
+  origin?: string | string[]; // 允许的源地址
+  allowedHeaders?: string[];  // 允许的 header
 }
 
-// 服务器事件接口
-interface ServerEvent {
-  type: ServerEventType; // 事件类型
-  data?: any; // 事件数据
+// 缓存配置选项接口
+interface CacheOptions {
+  maxAge?: number; // 缓存最大时间（秒）
 }
 
-// 服务器错误接口
+// 服务器错误信息接口
 interface ServerError {
-  type: ServerErrorType; // 错误类型
-  error: any; // 错误对象
+  type: ServerErrorType;
+  error?: Error;
 }
 
+// 服务器事件信息接口
+interface ServerEvent {
+  type: ServerEventType;
+  data?: ESObject;
+}
+
+// WebDAV 服务器配置接口
+interface WebDAVServerOptions {
+  port?: number;
+  host?: string;
+  enableAuth?: boolean;
+  username?: string;
+  password?: string;
+  enableLogging?: boolean;
+  logStream?: (message: string) => void;
+  logFormat?: string;
+}
+
+// 路径映射接口
+interface PathMapping {
+  virtualPath: string; // 虚拟路径
+  realPath: string;    // 物理路径
+}
+
+// 文件/目录信息接口
+interface FileInfo {
+  name: string;         // 文件名
+  path: string;         // 完整路径
+  isDirectory: boolean; // 是否为目录
+  size: number;         // 文件大小（字节）
+  lastModified: number; // 最后修改时间（时间戳）
+  createdTime: number;  // 创建时间（时间戳）
+  mimeType?: string;    // MIME 类型
+}
 ```
 
+#### 枚举定义
 
+```typescript
+// 服务器错误类型枚举
+enum ServerErrorType {
+  STARTUP_FAILED = 'startup_failed',
+  CONNECTION_ERROR = 'connection_error',
+  CLIENT_ERROR = 'client_error',
+  SOCKET_ERROR = 'socket_error',
+  LISTEN_ERROR = 'listen_error',
+  BIND_ERROR = 'bind_error',
+  CERTIFICATE_ERROR = 'certificate_error',
+  TLS_ERROR = 'tls_error',
+  UNKNOWN_ERROR = 'unknown_error'
+}
 
-如果是使用过程中有什么问题，欢迎提 [issues](https://github.com/iHongRen/WebServer/issues)
+// 服务器事件类型枚举
+enum ServerEventType {
+  SERVER_STARTED = 'server_started',
+  SERVER_STOPPED = 'server_stopped',
+  ERROR = 'error',
+  WARNING = 'warning',
+  REQUEST_RECEIVED = 'request_received',
+  RESPONSE_SENT = 'response_sent'
+}
 
+// 日志格式枚举
+enum LogFormat {
+  COMBINED = 'combined',
+  COMMON = 'common',
+  DEV = 'dev',
+  SHORT = 'short',
+  TINY = 'tiny'
+}
+```
 
+---
 
-# 作者
+## 示例
 
-[@仙银](https://github.com/iHongRen)
+项目包含完整的示例代码，位于 `entry/src/main/ets/examples/` 目录：
 
-鸿蒙开源作品，欢迎持续关注 [🌟Star](https://github.com/iHongRen/WebServer) ，[💖赞助](https://ihongren.github.io/donate.html)
+| 示例 | 描述 | 端口 |
+|------|------|------|
+| [http](entry/src/main/ets/examples/http/) | 基础 HTTP 服务器 | 8080 |
+| [https](entry/src/main/ets/examples/https/) | HTTPS/TLS 安全连接 | 8443 |
+| [body-parser](entry/src/main/ets/examples/body-parser/) | 请求体解析 | 8080 |
+| [cors](entry/src/main/ets/examples/cors/) | CORS 跨域 | 8080 |
+| [router](entry/src/main/ets/examples/router/) | 路由系统 | 8080 |
+| [static](entry/src/main/ets/examples/static/) | 静态文件服务 | 8080 |
+| [logger](entry/src/main/ets/examples/logger/) | 日志记录 | 8080 |
+| [file-upload](entry/src/main/ets/examples/file-upload/) | 文件上传 | 8080 |
+| [stream](entry/src/main/ets/examples/stream/) | 流式传输 | 8080 |
+| [upload](entry/src/main/ets/examples/upload/) | 分片上传 | 8080 |
+| [event](entry/src/main/ets/examples/event/) | 事件系统 | 8080 |
+| [webdav](entry/src/main/ets/examples/webdav/) | WebDAV 服务器 | 8080 |
 
-1、[hpack](https://github.com/iHongRen/hpack) - 鸿蒙 HarmonyOS 一键打包上传分发测试工具。
+---
 
-2、[Open-in-DevEco-Studio](https://github.com/iHongRen/Open-in-DevEco-Studio)  - macOS 直接在 Finder 工具栏上，使用
-DevEco-Studio 打开鸿蒙工程。
+## 许可证
 
-3、[cxy-theme](https://github.com/iHongRen/cxy-theme) - DevEco-Studio 绿色护眼背景主题
+[Apache-2.0](LICENSE)
 
-4、[harmony-udid-tool](https://github.com/iHongRen/harmony-udid-tool) - 简单易用的 HarmonyOS 设备 UDID 获取工具，适用于非开发人员。
+---
 
-5、[SandboxFinder](https://github.com/iHongRen/SandboxFinder) - 鸿蒙沙箱文件浏览器，支持模拟器和真机
+## 作者
 
-6、[WebServer](https://github.com/iHongRen/WebServer) - 鸿蒙轻量级Web服务器框架，类 Express.js API 风格。
+@handwer
 
-7、[SelectableMenu](https://github.com/iHongRen/SelectableMenu) - 适用于聊天对话框中的文本选择菜单
+## 主页
 
-8、[RefreshList](https://github.com/iHongRen/RefreshList) - 功能完善的上拉下拉加载组件，支持各种自定义。
+[https://github.com/iHongRen](https://github.com/iHongRen)
+
+## 仓库
+
+[https://github.com/iHongRen/WebServer](https://github.com/iHongRen/WebServer)
