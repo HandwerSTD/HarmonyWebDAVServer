@@ -208,7 +208,7 @@ Response:
 ## Code Example
 
 ```typescript
-import { HttpServer, ServerEventType, ServerErrorType } from '@cxy/webserver';
+import { HttpServer, ServerEventType, ServerErrorType } from '@handwer/webdav-server';
 
 const server = new HttpServer();
 

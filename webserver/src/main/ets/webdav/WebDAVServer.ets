@@ -22,6 +22,8 @@ export interface WebDAVServerOptions {
   username?: string;                // 用户名
   password?: string;                // 密码
   enableLogging?: boolean;          // 是否启用日志
+  logStream?: (message: string) => void;  // 自定义日志输出流（用于重定向日志）
+  logFormat?: string;               // 日志格式（dev, combined, common, short, tiny）
 }
 
 /**
@@ -41,6 +43,7 @@ export class WebDAVServer {
   private options: WebDAVServerOptions;
   private pathMappings: Map<string, PathMapping> = new Map();
   private isRunning: boolean = false;
+  private customLogStream?: (message: string) => void;  // 自定义日志输出流
 
   /**
    * 构造函数
@@ -115,16 +118,57 @@ export class WebDAVServer {
   }
 
   /**
+   * 设置自定义日志输出流
+   * @param logStream 日志输出函数，接收日志消息字符串
+   * 
+   * @example
+   * // 重定向日志到文件
+   * const logFile = '/path/to/webdav.log';
+   * server.setLogStream(async (message: string) => {
+   *   const file = await fileIo.open(logFile, fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.APPEND);
+   *   await fileIo.write(file.fd, new util.TextEncoder().encodeInto(message).buffer);
+   *   await fileIo.close(file.fd);
+   * });
+   * 
+   * @example
+   * // 重定向日志到自定义处理函数
+   * server.setLogStream((message: string) => {
+   *   // 发送到远程日志服务器
+   *   sendToRemoteLogServer(message);
+   *   // 同时输出到控制台
+   *   console.log(message);
+   * });
+   */
+  public setLogStream(logStream: (message: string) => void): void {
+    this.customLogStream = logStream;
+    // 如果服务器已经在运行，需要重新配置日志中间件
+    if (this.isRunning) {
+      console.warn('[WebDAV] 服务器已在运行，新的日志配置将在下次启动时生效');
+    }
+  }
+
+  /**
+   * 获取当前日志输出流
+   * @returns 当前的日志输出函数，如果没有设置则返回undefined
+   */
+  public getLogStream(): ((message: string) => void) | undefined {
+    return this.customLogStream || this.options.logStream;
+  }
+
+  /**
    * 配置中间件
    */
   private setupMiddleware(): void {
     // 日志中间件
     if (this.options.enableLogging) {
+      // 使用自定义日志流或默认控制台输出
+      const logStream = this.customLogStream || this.options.logStream || ((log: string) => {
+        console.log(`[WebDAV] ${log}`);
+      });
+      
       this.server.logger({
-        format: 'dev',
-        stream: (log: string) => {
-          console.log(`[WebDAV] ${log}`);
-        }
+        format: this.options.logFormat || 'dev',
+        stream: logStream
       });
     }
 

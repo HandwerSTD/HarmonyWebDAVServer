@@ -5,7 +5,7 @@
  * @description : 流式传输示例 - 展示WebServer的流式传输功能
  */
 
-import { HttpServer, HttpRequest, HttpResponse } from '@cxy/webserver';
+import { HttpServer, HttpRequest, HttpResponse } from '@handwer/webdav-server';
 import { socket } from '@kit.NetworkKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';

@@ -24,7 +24,7 @@
 ## 安装
 
 ```sh
-ohpm install @cxy/webserver
+ohpm install @handwer/webdav-server
 ```
 
 或在`oh-package.json5` 添加依赖，然后同步
@@ -32,7 +32,7 @@ ohpm install @cxy/webserver
 ```json
 {
   "dependencies": {
-    "@cxy/webserver": "^2.0.2"
+    "@handwer/webdav-server": "^2.0.2"
   }
 }
 ```
@@ -41,7 +41,7 @@ ohpm install @cxy/webserver
 ## 快速开始
 
 ```typescript
-import { HttpServer } from '@cxy/webserver';
+import { HttpServer } from '@handwer/webdav-server';
 
 const server = new HttpServer();
 
@@ -65,7 +65,7 @@ server.startServer(8080).then((info) => {
 完整的代码示例请查看 [demo](https://github.com/iHongRen/WebServer/blob/main/entry/src/main/ets/pages/Index.ets)
 
 ```typescript
-import { HttpServer } from '@cxy/webserver';
+import { HttpServer } from '@handwer/webdav-server';
 
 // 初始化服务器
 initServer()

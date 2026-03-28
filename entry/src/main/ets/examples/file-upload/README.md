@@ -18,8 +18,8 @@
 ### 1. 基本使用
 
 ```typescript
-import { HttpServer, FileUpload } from '@cxy/webserver';
-import type { UploadedFile } from '@cxy/webserver';
+import { HttpServer, FileUpload } from '@handwer/webdav-server';
+import type { UploadedFile } from '@handwer/webdav-server';
 
 const server = new HttpServer();
 

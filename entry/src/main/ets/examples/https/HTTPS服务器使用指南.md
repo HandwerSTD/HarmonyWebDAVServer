@@ -37,7 +37,7 @@ console.log(`🔒 HTTPS服务器运行: https://${serverInfo.address}:${serverIn
 ### 2. 手动TLS配置
 
 ```typescript
-import { TLSServer } from '@cxy/webserver';
+import { TLSServer } from '@handwer/webdav-server';
 import { socket } from '@kit.NetworkKit';
 
 // 配置TLS选项

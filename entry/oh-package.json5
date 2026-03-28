@@ -6,7 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@cxy/webserver": "file:../webserver"
+    "@handwer/webdav-server": "file:../webserver"
   }
 }
 

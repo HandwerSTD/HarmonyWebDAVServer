@@ -252,7 +252,7 @@ Logs are automatically saved to the file system:
 ## Code Example
 
 ```typescript
-import { HttpServer, HttpRequest, HttpResponse } from '@cxy/webserver';
+import { HttpServer, HttpRequest, HttpResponse } from '@handwer/webdav-server';
 
 const server = new HttpServer();
 

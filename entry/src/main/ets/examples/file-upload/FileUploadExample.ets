@@ -5,8 +5,8 @@
  * @description : 文件上传示例 - 基于 express-fileupload 设计的流式上传中间件
  */
 
-import { HttpServer, HttpRequest, HttpResponse, FileUpload } from '@cxy/webserver';
-import type { UploadedFile } from '@cxy/webserver';
+import { HttpServer, HttpRequest, HttpResponse, FileUpload } from '@handwer/webdav-server';
+import type { UploadedFile } from '@handwer/webdav-server';
 import { socket } from '@kit.NetworkKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { common } from '@kit.AbilityKit';

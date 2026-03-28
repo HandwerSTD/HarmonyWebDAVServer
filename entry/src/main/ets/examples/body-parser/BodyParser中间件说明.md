@@ -23,7 +23,7 @@
 推荐为不同的路由或整个服务器启用你需要的特定解析器。这样做更高效，也更安全。
 
 ```typescript
-import { HttpServer } from "@cxy/webserver";
+import { HttpServer } from "@handwer/webdav-server";
 
 const server = new HttpServer();
 
@@ -55,7 +55,7 @@ server.startServer(8080);
 如果你希望服务器能自动处理多种不同类型的请求体，可以使用 `auto()` 方法。它会根据 `Content-Type` 自动选择解析器。
 
 ```typescript
-import { HttpServer } from "@cxy/webserver";
+import { HttpServer } from "@handwer/webdav-server";
 
 const server = new HttpServer();
 

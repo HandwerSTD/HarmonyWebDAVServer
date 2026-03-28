@@ -7,7 +7,7 @@
 
 import {
   HttpServer, HttpRequest, HttpResponse, File,
-} from '@cxy/webserver';
+} from '@handwer/webdav-server';
 import { socket } from '@kit.NetworkKit';
 
 // 定义用于存储解析结果的接口

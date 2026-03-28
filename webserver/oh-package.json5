@@ -1,9 +1,9 @@
 {
-  "name": "@cxy/webserver",
+  "name": "@handwer/webdav-server",
   "version": "2.0.2",
   "description": "鸿蒙Web服务器，提供类Express.js API，支持中间件、路由、静态服务",
   "main": "Index.ets",
-  "author": "@仙银",
+  "author": "@handwer",
   "homepage": "https://github.com/iHongRen",
   "repository": "https://github.com/iHongRen/WebServer",
   "license": "Apache-2.0",

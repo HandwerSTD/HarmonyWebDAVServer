@@ -247,7 +247,7 @@ curl -X DELETE http://IP:8080/api/results
 ## Code Example
 
 ```typescript
-import { HttpServer, HttpRequest, HttpResponse } from '@cxy/webserver';
+import { HttpServer, HttpRequest, HttpResponse } from '@handwer/webdav-server';
 
 const server = new HttpServer();
 
