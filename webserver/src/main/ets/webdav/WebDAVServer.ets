@@ -12,6 +12,8 @@ import { FileSystemAdapter, FileInfo } from './FileSystemAdapter';
 import { Utils } from '../Utils';
 import { ObjectSpread } from './ObjectSpread';
 
+export { FileSystemAdapter, FileInfo }
+
 /**
  * WebDAV服务器配置
  */
