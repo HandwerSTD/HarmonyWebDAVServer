@@ -292,33 +292,49 @@ export class WebDAVServer {
    * 处理PROPFIND请求
    */
   private async handlePropfind(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const GeneratedDestructObj_1 = this.resolvePath(req.path);
-    const virtualPath = GeneratedDestructObj_1.virtualPath;
-    const realPath = GeneratedDestructObj_1.realPath;
-    const mapping = GeneratedDestructObj_1.mapping;
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
+    const isVirtualDir = pathResult.isVirtualDir;
     
-    if (!mapping) {
-      res.status(404).json({ error: 'Not Found' });
+    if (!mapping && !isVirtualDir) {
+      res.status(404).json({ error: 'Not Found' } as ESObject);
       return;
     }
 
     // 安全检查
-    if (!this.isPathSafe(realPath, mapping.realPath)) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
+    if (mapping) {
+      if (!this.isPathSafe(realPath, mapping.realPath)) {
+        res.status(403).json({ error: 'Forbidden' } as ESObject);
+        return;
+      }
     }
 
     const depth = req.headers.get('depth') || 'infinity';
-    const exists = await FileSystemAdapter.exists(realPath);
+    let exists = false;
+    let fileInfo: FileInfo | null = null;
 
-    if (!exists) {
-      res.status(404).json({ error: 'Not Found' });
-      return;
+    if (isVirtualDir) {
+      exists = true;
+      const now = Date.now();
+      fileInfo = {
+        name: virtualPath === '/' ? '/' : virtualPath.split('/').pop()!,
+        path: virtualPath,
+        isDirectory: true,
+        size: 0,
+        lastModified: now,
+        createdTime: now
+      };
+    } else {
+      exists = await FileSystemAdapter.exists(realPath);
+      if (exists) {
+        fileInfo = await FileSystemAdapter.stat(realPath);
+      }
     }
 
-    const fileInfo = await FileSystemAdapter.stat(realPath);
-    if (!fileInfo) {
-      res.status(404).json({ error: 'Not Found' });
+    if (!exists || !fileInfo) {
+      res.status(404).json({ error: 'Not Found' } as ESObject);
       return;
     }
 
@@ -331,7 +347,12 @@ export class WebDAVServer {
     // 根据 depth 加载不同深度的资源
     if (fileInfo.isDirectory && depth !== '0') {
       if (depth === '1') {
-        const children = await FileSystemAdapter.listDir(realPath);
+        let children: FileInfo[] = [];
+        if (isVirtualDir) {
+          children = await this.getVirtualChildren(virtualPath);
+        } else {
+          children = await FileSystemAdapter.listDir(realPath);
+        }
         for (const child of children) {
           const childVirtualPath = virtualPath === '/' 
             ? `/${child.name}` 
@@ -340,7 +361,7 @@ export class WebDAVServer {
         }
       } else {
         // 'infinity' 或其他
-        await this.appendPropfindChildrenRecursive(virtualPath, realPath, responses);
+        await this.appendPropfindChildrenRecursive(virtualPath, responses);
       }
     }
 
@@ -351,30 +372,47 @@ export class WebDAVServer {
    * 处理GET请求
    */
   private async handleGet(req: HttpRequest, res: HttpResponse): Promise<void> {
-    const GeneratedDestructObj_1 = this.resolvePath(req.path);
-    const virtualPath = GeneratedDestructObj_1.virtualPath;
-    const realPath = GeneratedDestructObj_1.realPath;
-    const mapping = GeneratedDestructObj_1.mapping;
+    const pathResult = this.resolvePath(req.path);
+    const virtualPath = pathResult.virtualPath;
+    const realPath = pathResult.realPath;
+    const mapping = pathResult.mapping;
+    const isVirtualDir = pathResult.isVirtualDir;
     
-    if (!mapping) {
-      res.status(404).json({ error: 'Not Found' });
+    if (!mapping && !isVirtualDir) {
+      res.status(404).json({ error: 'Not Found' } as ESObject);
       return;
     }
 
-    if (!this.isPathSafe(realPath, mapping.realPath)) {
-      res.status(403).json({ error: 'Forbidden' });
+    if (isVirtualDir) {
+      const children = await this.getVirtualChildren(virtualPath);
+      const items: DirListItem[] = children.map(c => ({
+        name: c.name,
+        isDirectory: c.isDirectory,
+        size: c.size,
+        lastModified: c.lastModified
+      } as DirListItem));
+      res.json({
+        path: virtualPath,
+        type: 'directory',
+        items: items
+      } as ESObject);
+      return;
+    }
+
+    if (!this.isPathSafe(realPath, mapping!.realPath)) {
+      res.status(403).json({ error: 'Forbidden' } as ESObject);
       return;
     }
 
     const exists = await FileSystemAdapter.exists(realPath);
     if (!exists) {
-      res.status(404).json({ error: 'Not Found' });
+      res.status(404).json({ error: 'Not Found' } as ESObject);
       return;
     }
 
     const fileInfo = await FileSystemAdapter.stat(realPath);
     if (!fileInfo) {
-      res.status(404).json({ error: 'Not Found' });
+      res.status(404).json({ error: 'Not Found' } as ESObject);
       return;
     }
 
@@ -657,10 +695,24 @@ export class WebDAVServer {
     }
 
     if (!bestMatch) {
+      let isVirtualDir = false;
+      if (normalizedPath === '/') {
+        isVirtualDir = this.pathMappings.size > 0;
+      } else {
+        const prefix = normalizedPath === '/' ? '/' : normalizedPath + '/';
+        for (const vPath of this.pathMappings.keys()) {
+          if (vPath.startsWith(prefix)) {
+            isVirtualDir = true;
+            break;
+          }
+        }
+      }
+
       const result: ResolvePathResult = {
         virtualPath: normalizedPath,
         realPath: '',
-        mapping: null
+        mapping: null,
+        isVirtualDir: isVirtualDir
       };
       return result;
     }
@@ -674,7 +726,8 @@ export class WebDAVServer {
     const result: ResolvePathResult = {
       virtualPath: normalizedPath,
       realPath: realPath,
-      mapping: bestMatch
+      mapping: bestMatch,
+      isVirtualDir: false
     };
     return result;
   }
@@ -729,10 +782,73 @@ export class WebDAVServer {
   }
 
   /**
+   * 获取虚拟目录的子节点
+   */
+  private async getVirtualChildren(virtualPath: string): Promise<FileInfo[]> {
+    const childrenMap = new Map<string, FileInfo>();
+    const prefix = virtualPath === '/' ? '/' : virtualPath + '/';
+    
+    for (const vPath of this.pathMappings.keys()) {
+      if (vPath.startsWith(prefix) || (virtualPath === '/' && vPath !== '/')) {
+        let remainder = vPath;
+        if (virtualPath !== '/') {
+           remainder = vPath.substring(prefix.length);
+        } else {
+           remainder = vPath.substring(1);
+        }
+        
+        const childName = remainder.split('/')[0];
+        if (childName && !childrenMap.has(childName)) {
+           const childVirtualPath = virtualPath === '/' ? `/${childName}` : `${virtualPath}/${childName}`;
+           
+           // 检查此子节点是否本身就是个映射点，如果是有真实信息的，直接提供其真实物理占用体积与修改时间
+           const childMapping = this.pathMappings.get(childVirtualPath);
+           if (childMapping) {
+              const exists = await FileSystemAdapter.exists(childMapping.realPath);
+              if (exists) {
+                 const stat = await FileSystemAdapter.stat(childMapping.realPath);
+                 if (stat) {
+                    stat.name = childName;
+                    childrenMap.set(childName, stat);
+                    continue;
+                 }
+              }
+           }
+
+           const now = Date.now();
+           childrenMap.set(childName, {
+             name: childName,
+             path: childVirtualPath,
+             isDirectory: true,
+             size: 0,
+             lastModified: now,
+             createdTime: now
+           });
+        }
+      }
+    }
+    return Array.from(childrenMap.values());
+  }
+
+  /**
    * 递归获取所有子孙目录用于 PROPFIND
    */
-  private async appendPropfindChildrenRecursive(virtualParent: string, realParent: string, responses: WebDAVResponse[]): Promise<void> {
-    const children = await FileSystemAdapter.listDir(realParent);
+  private async appendPropfindChildrenRecursive(virtualParent: string, responses: WebDAVResponse[]): Promise<void> {
+    const pathResult = this.resolvePath(virtualParent);
+    const isVirtualDir = pathResult.isVirtualDir;
+    const mapping = pathResult.mapping;
+
+    let children: FileInfo[] = [];
+
+    if (isVirtualDir) {
+       children = await this.getVirtualChildren(virtualParent);
+    } else if (mapping) {
+       const exists = await FileSystemAdapter.exists(pathResult.realPath);
+       if (exists) {
+          children = await FileSystemAdapter.listDir(pathResult.realPath);
+       }
+    }
+
     for (const child of children) {
       const childVirtualPath = virtualParent === '/' 
         ? `/${child.name}` 
@@ -740,7 +856,7 @@ export class WebDAVServer {
       responses.push(this.buildPropfindResponse(childVirtualPath, child));
       
       if (child.isDirectory) {
-        await this.appendPropfindChildrenRecursive(childVirtualPath, child.path, responses);
+        await this.appendPropfindChildrenRecursive(childVirtualPath, responses);
       }
     }
   }
@@ -770,6 +886,7 @@ interface ResolvePathResult {
   virtualPath: string;
   realPath: string;
   mapping: PathMapping | null;
+  isVirtualDir?: boolean;
 }
 
 /**

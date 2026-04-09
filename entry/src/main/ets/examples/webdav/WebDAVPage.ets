@@ -647,7 +647,7 @@ struct WebDAVPage {
     try {
       this.httpRequest = http.createHttp();
       
-      const url = `http://127.0.0.1:${this.port}/photos`;
+      const url = `http://127.0.0.1:${this.port}/`;
       
       // PROPFIND 请求体
       const propfindXml = `<?xml version="1.0" encoding="utf-8"?>

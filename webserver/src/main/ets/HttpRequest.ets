@@ -233,8 +233,24 @@ export class HttpRequest {
     if (requestLine) {
       const requestLineParts = requestLine.split(' ');
       this.method = requestLineParts[0];
-      const fullPath = requestLineParts[1];
-      this.version = requestLineParts[2];
+      let fullPath = requestLineParts[1];
+      this.version = requestLineParts.length > 2 ? requestLineParts[2] : fullPath;
+      
+      // 处理客户端因未携带尾斜杠可能导致的路径异常
+      // 1. 发送了绝对的 URI 格式 (如 http://192.168.1.5:8080 )
+      if (fullPath && (fullPath.startsWith('http://') || fullPath.startsWith('https://'))) {
+        const pathStart = fullPath.indexOf('/', fullPath.indexOf('://') + 3);
+        if (pathStart === -1) {
+          fullPath = '/';
+        } else {
+          fullPath = fullPath.substring(pathStart);
+        }
+      }
+      
+      // 2. 只有两段或 fullPath 本来就是 HTTP 版本号（某些库处理不规范直接忽略空路径）
+      if (!fullPath || fullPath.startsWith('HTTP/')) {
+        fullPath = '/';
+      }
 
       this.url = fullPath; // 保存完整URL
 
