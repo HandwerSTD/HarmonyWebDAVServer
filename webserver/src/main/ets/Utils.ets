@@ -180,4 +180,34 @@ export class Utils {
     // 只允许字母、数字、下划线、连字符、点
     return filename.replace(/[^a-zA-Z0-9_.-]/g, '');
   }
+
+  /**
+   * 转义 XML 特殊字符，防注入
+   * @param unsafe 包含潜在非法字符的字符串
+   * @returns 安全的 XML 字符串
+   */
+  static escapeXml(unsafe: string): string {
+    if (!unsafe) return '';
+    return unsafe.replace(/[<>&'"]/g, (c: string) => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+        default: return c;
+      }
+    });
+  }
+
+  /**
+   * 编码 WebDAV URI 路径
+   * 保证合法中文字符/空格都被正确转码，同时保留斜杠
+   * @param uri 完整虚拟路径 (e.g. /my dir/file.txt)
+   * @returns 编码后的安全 URI
+   */
+  static encodeWebDAVUri(uri: string): string {
+    if (!uri) return '';
+    return uri.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  }
 }

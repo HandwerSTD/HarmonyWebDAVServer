@@ -11,6 +11,7 @@ import { fileIo } from '@kit.CoreFileKit';
 import { FileSystemAdapter, FileInfo } from './FileSystemAdapter';
 import { Utils } from '../Utils';
 import { ObjectSpread } from './ObjectSpread';
+import { util } from '@kit.ArkTS';
 
 export { FileSystemAdapter, FileInfo }
 
@@ -180,6 +181,48 @@ export class WebDAVServer {
       methods: ['GET','POST','PUT','DELETE','OPTIONS','HEAD','MKCOL','PROPFIND','PROPPATCH','COPY','MOVE','LOCK','UNLOCK'],
       allowedHeaders: ['Content-Type','Authorization','Depth','Destination','Overwrite','If','Lock-Token','Range'],
     });
+
+    // 身份认证中间件
+    if (this.options.enableAuth && this.options.username) {
+      this.server.use((req: HttpRequest, res: HttpResponse, next: Function): void => {
+        // 如果是 OPTIONS 请求，通常直接放行（某些客户端预检请求可能不带认证信息）
+        if (req.method === 'OPTIONS') {
+          return next();
+        }
+
+        const authHeader = req.headers.get('authorization');
+        if (!authHeader || !authHeader.toLowerCase().startsWith('basic ')) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="WebDAV Server"');
+          // 注意：需要使用 as ESObject 绕过类型检查
+          res.status(401).json({ error: 'Unauthorized' } as ESObject);
+          return;
+        }
+
+        const base64Credentials = authHeader.substring(6).trim();
+        let credentials = '';
+        try {
+          const base64Helper = new util.Base64Helper();
+          const decodedArray = base64Helper.decodeSync(base64Credentials);
+          credentials = util.TextDecoder.create().decodeToString(decodedArray);
+        } catch (e) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="WebDAV Server"');
+          res.status(401).json({ error: 'Unauthorized' } as ESObject);
+          return;
+        }
+
+        const parts = credentials.split(':');
+        const reqUsername = parts[0];
+        const reqPassword = parts.slice(1).join(':');
+
+        if (reqUsername === this.options.username && reqPassword === this.options.password) {
+          return next();
+        } else {
+          res.setHeader('WWW-Authenticate', 'Basic realm="WebDAV Server"');
+          res.status(401).json({ error: 'Unauthorized' } as ESObject);
+          return;
+        }
+      });
+    }
   }
 
   /**
@@ -285,14 +328,19 @@ export class WebDAVServer {
     // 添加当前资源
     responses.push(this.buildPropfindResponse(virtualPath, fileInfo));
 
-    // 如果是目录且depth不为0，添加子资源
+    // 根据 depth 加载不同深度的资源
     if (fileInfo.isDirectory && depth !== '0') {
-      const children = await FileSystemAdapter.listDir(realPath);
-      for (const child of children) {
-        const childVirtualPath = virtualPath === '/' 
-          ? `/${child.name}` 
-          : `${virtualPath}/${child.name}`;
-        responses.push(this.buildPropfindResponse(childVirtualPath, child));
+      if (depth === '1') {
+        const children = await FileSystemAdapter.listDir(realPath);
+        for (const child of children) {
+          const childVirtualPath = virtualPath === '/' 
+            ? `/${child.name}` 
+            : `${virtualPath}/${child.name}`;
+          responses.push(this.buildPropfindResponse(childVirtualPath, child));
+        }
+      } else {
+        // 'infinity' 或其他
+        await this.appendPropfindChildrenRecursive(virtualPath, realPath, responses);
       }
     }
 
@@ -586,7 +634,13 @@ export class WebDAVServer {
    * 解析路径：将虚拟路径转换为物理路径
    */
   private resolvePath(requestPath: string): ResolvePathResult {
-    const normalizedPath = FileSystemAdapter.normalizePath(requestPath);
+    let decodedPath = requestPath;
+    try {
+      decodedPath = requestPath.split('/').map(segment => decodeURIComponent(segment)).join('/');
+    } catch (error) {
+      decodedPath = decodeURI(requestPath);
+    }
+    const normalizedPath = FileSystemAdapter.normalizePath(decodedPath);
     
     // 查找匹配的映射
     let bestMatch: PathMapping | null = null;
@@ -659,7 +713,7 @@ export class WebDAVServer {
       'displayname': fileInfo.name,
       'getcontentlength': fileInfo.size.toString(),
       'getlastmodified': new Date(fileInfo.lastModified).toUTCString(),
-      'creationdate': new Date(fileInfo.createdTime).toUTCString(),
+      'creationdate': new Date(fileInfo.createdTime).toISOString(),
       'resourcetype': fileInfo.isDirectory ? '<D:collection/>' : '',
       'getcontenttype': fileInfo.mimeType || 'application/octet-stream'
     };
@@ -668,10 +722,27 @@ export class WebDAVServer {
       prop: prop
     };
     const response: WebDAVResponse = {
-      href: href,
+      href: Utils.encodeWebDAVUri(href),
       propstat: propstat
     };
     return response;
+  }
+
+  /**
+   * 递归获取所有子孙目录用于 PROPFIND
+   */
+  private async appendPropfindChildrenRecursive(virtualParent: string, realParent: string, responses: WebDAVResponse[]): Promise<void> {
+    const children = await FileSystemAdapter.listDir(realParent);
+    for (const child of children) {
+      const childVirtualPath = virtualParent === '/' 
+        ? `/${child.name}` 
+        : `${virtualParent}/${child.name}`;
+      responses.push(this.buildPropfindResponse(childVirtualPath, child));
+      
+      if (child.isDirectory) {
+        await this.appendPropfindChildrenRecursive(childVirtualPath, child.path, responses);
+      }
+    }
   }
 
   /**

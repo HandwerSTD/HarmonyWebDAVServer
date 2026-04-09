@@ -394,7 +394,7 @@ export class HttpResponse {
             for (let j = 0; j < entries.length; j++) {
               const key = entries[j][0];
               const value = entries[j][1];
-              xml += `        <D:${key}>${value}</D:${key}>\n`;
+              xml += `        <D:${key}>${Utils.escapeXml(value)}</D:${key}>\n`;
             }
           }
           
